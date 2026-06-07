@@ -3,7 +3,7 @@ session_start();
 
 // If user is already logged in, redirect them to the dashboard inside private/
 if (isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true) {
-    header("location: ../user-admin/admin_dashboard.php");
+    header("location: ../../pages/user-admin/admin_dashboard.php");
     exit;
 }
 
@@ -18,7 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $_SESSION["loggedin"] = true;
         $_SESSION["username"] = $username;
         // Redirect into the private dashboard folder
-        header("location: ../private/admin_daashboard.php");
+        header("location: ../../pages/user-admin/admin_dashboard.php");
         exit;
     } else {
         $password_err = "Invalid username or password.";

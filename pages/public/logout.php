@@ -4,6 +4,6 @@ $_SESSION = array();
 session_destroy();
 
 // Kick them back out to the login page sitting in the same public directory
-header("location: ../public/login.php");
+header("location: ../../pages/public/login.php");
 exit;
 ?>

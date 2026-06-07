@@ -98,8 +98,8 @@ $history_result = $conn->query($history_query);
                     <li><a href="../../pages/hr/hrdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li><a href="../../pages/hr/hrattendance.php"><i class="ph ph-user-focus"></i> Attendance</a></li>
                     <li class="active"><a href="../../pages/hr/hrleaveapprovals.php"><i class="ph ph-calendar-check"></i> Leave Approvals</a></li>
-                    <li><a href="#"><i class="ph ph-users"></i> Employees</a></li>
-                    <li><a href="#"><i class="ph ph-gear"></i> Settings</a></li>
+                    <li><a href="../../pages/hr/hremployees.php"><i class="ph ph-users"></i> Employees</a></li>
+                    <li><a href="../../pages/hr/hrsettings.php"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
             </div>
             <div class="sidebar-footer"></div>

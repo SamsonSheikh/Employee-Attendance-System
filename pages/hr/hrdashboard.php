@@ -8,11 +8,29 @@ if (!isset($_SESSION['user_id'])) {
 }
 // Uncomment the above in production!
 
-// 2. Database Connection (Ready for when you pull real stats)
-// require_once 'includes/db_connect.php';
+// 2. Database Connection
+require_once 'includes/db_connect.php';
 
-// Mock variables for the dashboard
-$hr_name = "John"; // You would pull this from $_SESSION['first_name']
+// 3. Fetch HR User's Name
+// If the session is active, it uses their real name. Otherwise, it defaults to a placeholder.
+$hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "John";
+
+// 4. Fetch Dynamic Dashboard Statistics
+// Count total employees
+$emp_query = $conn->query("SELECT COUNT(user_id) AS total FROM users");
+$total_employees = $emp_query ? $emp_query->fetch_assoc()['total'] : 0;
+
+// Count employees currently on leave today
+$today = date('Y-m-d');
+$leave_query = $conn->query("SELECT COUNT(DISTINCT user_id) AS total FROM leave_requests WHERE approval_status = 'Approved' AND '$today' BETWEEN start_date AND end_date");
+$on_leave = $leave_query ? $leave_query->fetch_assoc()['total'] : 0;
+
+// Count pending tasks (e.g., pending leave requests needing HR approval)
+$pending_query = $conn->query("SELECT COUNT(request_id) AS total FROM leave_requests WHERE approval_status = 'Pending'");
+$pending_tasks = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
+
+// For "Working Remotely", keeping static for now as it's not in the current DB schema.
+$working_remotely = 20; 
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -48,8 +66,8 @@ $hr_name = "John"; // You would pull this from $_SESSION['first_name']
                 <span class="badge"></span>
             </div>
             <div class="user-profile">
-                <img src="https://ui-avatars.com/api/?name=John+Doe&background=random" alt="User Avatar">
-                <span>John Doe <i class="ph ph-caret-down"></i></span>
+                <img src="https://ui-avatars.com/api/?name=<?php echo urlencode($hr_name); ?>&background=random" alt="User Avatar">
+                <span><?php echo htmlspecialchars($hr_name); ?> <i class="ph ph-caret-down"></i></span>
             </div>
         </div>
     </nav>
@@ -80,28 +98,28 @@ $hr_name = "John"; // You would pull this from $_SESSION['first_name']
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-users"></i></div>
                     <div class="stat-info">
-                        <h3>254</h3>
+                        <h3><?php echo htmlspecialchars($total_employees); ?></h3>
                         <p>Total Employees</p>
                     </div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-user-minus"></i></div>
                     <div class="stat-info">
-                        <h3>10</h3>
+                        <h3><?php echo htmlspecialchars($on_leave); ?></h3>
                         <p>On Leave</p>
                     </div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-house-line"></i></div>
                     <div class="stat-info">
-                        <h3>20</h3>
+                        <h3><?php echo htmlspecialchars($working_remotely); ?></h3>
                         <p>Working Remotely</p>
                     </div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-check-circle"></i></div>
                     <div class="stat-info">
-                        <h3>4</h3>
+                        <h3><?php echo htmlspecialchars($pending_tasks); ?></h3>
                         <p>Pending Tasks</p>
                     </div>
                 </div>

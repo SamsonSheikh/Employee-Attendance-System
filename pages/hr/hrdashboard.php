@@ -22,7 +22,7 @@ $hr_name = "John"; // You would pull this from $_SESSION['first_name']
     <title>HR Dashboard | Vika de Luxe</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="hrdashboard.css">
+    <link rel="stylesheet" href="../../assets/css/hrdashboard.css">
 </head>
 <body>
 

@@ -3,7 +3,7 @@ session_start();
 
 // If user is already logged in, redirect them to the dashboard inside private/
 if (isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true) {
-    header("location: ../private/admin_dashboard.php");
+    header("location: ../user-admin/admin_dashboard.php");
     exit;
 }
 

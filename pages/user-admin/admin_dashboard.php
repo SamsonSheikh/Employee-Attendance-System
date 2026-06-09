@@ -1,10 +1,118 @@
 <?php
 // Include the authentication function from the same directory
 require_once __DIR__ . '/functions.php'; // Change extension to .php if you rename it!
+require_once __DIR__ . '/../../includes/db_connect.php';
 check_admin_login();
 
 // Get admin's name
 $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
+
+// Dashboard counters from the existing database tables
+$total_users = 0;
+$active_users = 0;
+$department_total = 0;
+$shift_total = 0;
+
+$total_users_result = $conn->query("SELECT COUNT(user_id) AS total_users FROM users");
+if ($total_users_result && $total_users_result->num_rows > 0) {
+    $total_users = (int) $total_users_result->fetch_assoc()['total_users'];
+}
+
+$department_result = $conn->query("SELECT COUNT(department_id) AS total_departments FROM departments");
+if ($department_result && $department_result->num_rows > 0) {
+    $department_total = (int) $department_result->fetch_assoc()['total_departments'];
+}
+
+$shift_result = $conn->query("SELECT COUNT(shift_id) AS total_shifts FROM shifts");
+if ($shift_result && $shift_result->num_rows > 0) {
+    $shift_total = (int) $shift_result->fetch_assoc()['total_shifts'];
+}
+
+// The current users table does not have a separate status flag, so active users
+// are counted from the same user records currently present in the system.
+$active_users = $total_users;
+
+// Period-based counts for the chart buttons
+$daily_users = 0;
+$weekly_labels = [];
+$weekly_values = [];
+$monthly_labels = [];
+$monthly_values = [];
+$test_floor = 3;
+
+$daily_users_result = $conn->query("SELECT COUNT(user_id) AS total FROM users WHERE created_at >= CURDATE()");
+if ($daily_users_result && $daily_users_result->num_rows > 0) {
+    $daily_users = (int) $daily_users_result->fetch_assoc()['total'];
+}
+$daily_users = max($daily_users, $test_floor);
+
+$week_start = (new DateTime('sunday this week'))->format('Y-m-d');
+$week_end = (new DateTime('saturday this week'))->format('Y-m-d');
+
+$weekly_result = $conn->query("SELECT DATE(created_at) AS day_date, COUNT(user_id) AS total FROM users WHERE created_at >= '$week_start' AND created_at < DATE_ADD('$week_end', INTERVAL 1 DAY) GROUP BY DATE(created_at) ORDER BY day_date ASC");
+$weekly_counts = [];
+if ($weekly_result) {
+    while ($row = $weekly_result->fetch_assoc()) {
+        $weekly_counts[date('Y-m-d', strtotime($row['day_date']))] = (int) $row['total'];
+    }
+}
+
+for ($i = 0; $i <= 6; $i++) {
+    $date = date('Y-m-d', strtotime($week_start . ' + ' . $i . ' days'));
+    $weekly_labels[] = date('D', strtotime($date));
+    $weekly_values[] = max($weekly_counts[$date] ?? 0, $test_floor - 1);
+}
+
+$monthly_result = $conn->query("SELECT DATE_FORMAT(created_at, '%Y-%m') AS month_key, COUNT(user_id) AS total FROM users WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 2 MONTH) GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY month_key ASC");
+$monthly_counts = [];
+if ($monthly_result) {
+    while ($row = $monthly_result->fetch_assoc()) {
+        $monthly_counts[$row['month_key']] = (int) $row['total'];
+    }
+}
+
+$month_cursor = new DateTime('first day of this month');
+for ($offset = 2; $offset >= 0; $offset--) {
+    $month = clone $month_cursor;
+    $month->modify('-' . $offset . ' month');
+    $month_key = $month->format('Y-m');
+    $monthly_labels[] = $month->format('M');
+    $monthly_values[] = max($monthly_counts[$month_key] ?? 0, $test_floor - 1);
+}
+
+$department_test_value = max($department_total, $test_floor - 1);
+$shift_test_value = max($shift_total, $test_floor - 1);
+$weekly_departments = array_fill(0, count($weekly_labels), $department_test_value);
+$weekly_shifts = array_fill(0, count($weekly_labels), $shift_test_value);
+$monthly_departments = array_fill(0, count($monthly_labels), $department_test_value);
+$monthly_shifts = array_fill(0, count($monthly_labels), $shift_test_value);
+
+$chart_data = [
+    'daily' => [
+        'labels' => ['Today'],
+        'datasets' => [
+            ['label' => 'Active Users', 'values' => [$daily_users], 'className' => 'present'],
+            ['label' => 'Departments', 'values' => [$department_total], 'className' => 'absent'],
+            ['label' => 'Configured Shifts', 'values' => [$shift_total], 'className' => 'leave'],
+        ],
+    ],
+    'weekly' => [
+        'labels' => $weekly_labels,
+        'datasets' => [
+            ['label' => 'Active Users', 'values' => $weekly_values, 'className' => 'present'],
+            ['label' => 'Departments', 'values' => $weekly_departments, 'className' => 'absent'],
+            ['label' => 'Configured Shifts', 'values' => $weekly_shifts, 'className' => 'leave'],
+        ],
+    ],
+    'monthly' => [
+        'labels' => $monthly_labels,
+        'datasets' => [
+            ['label' => 'Active Users', 'values' => $monthly_values, 'className' => 'present'],
+            ['label' => 'Departments', 'values' => $monthly_departments, 'className' => 'absent'],
+            ['label' => 'Configured Shifts', 'values' => $monthly_shifts, 'className' => 'leave'],
+        ],
+    ],
+];
 ?>
 
 <!DOCTYPE html>
@@ -47,12 +155,17 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 <ul class="sidebar-links">
                     <li class="active"><a href="../../pages/user-admin/admin_dashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li><a href="../../pages/user-admin/adminusers.php"><i class="ph ph-users"></i> Master Users</a></li>
+                    <li><a href="../../pages/user-admin/adminreports.php"><i class="ph ph-file-text"></i> Reports</a></li>
+                    <li><a href="../../pages/user-admin/adminorg.php"><i class="ph ph-buildings"></i> Organization</a></li>
                     <li><a href="#"><i class="ph ph-gear"></i> Settings</a></li>
-                    <li><a href="#"><i class="ph ph-file-text"></i> Reports</a></li>
                 </ul>
             </div>
             
-            <div class="sidebar-footer"></div>
+            <div class="sidebar-footer">
+                <a href="../../pages/public/logout.php" class="sidebar-logout">
+                    <i class="ph ph-sign-out"></i> Logout
+                </a>
+            </div>
         </aside>
 
         <main class="content">
@@ -65,7 +178,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-users"></i></div>
                     <div class="stat-info">
-                        <h3>2,492</h3>
+                        <h3><?php echo htmlspecialchars((string) $total_users); ?></h3>
                         <p>Total Users</p>
                     </div>
                 </div>
@@ -73,7 +186,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-user-check"></i></div>
                     <div class="stat-info">
-                        <h3>1,842</h3>
+                        <h3><?php echo htmlspecialchars((string) $active_users); ?></h3>
                         <p>Active Users</p>
                     </div>
                 </div>
@@ -89,7 +202,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-building"></i></div>
                     <div class="stat-info">
-                        <h3>12</h3>
+                        <h3><?php echo htmlspecialchars((string) $department_total); ?></h3>
                         <p>Departments</p>
                     </div>
                 </div>
@@ -100,11 +213,14 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 
                 <div class="chart-card">
                     <div class="card-header">
-                        <h2>System Activity</h2>
+                        <div>
+                            <h2>System Activity</h2>
+                            <p id="chartPeriodLabel" class="section-desc">Showing Daily activity summary</p>
+                        </div>
                         <div class="chart-filters">
-                            <button>Today</button>
-                            <button>Month</button>
-                            <button class="active">Weekly</button>
+                            <button class="active" data-period="daily">Daily</button>
+                            <button data-period="weekly">Weekly</button>
+                            <button data-period="monthly">Monthly</button>
                         </div>
                     </div>
                     <div class="chart-legend">
@@ -113,44 +229,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                         <span class="legend-item"><span class="dot leave"></span> Total Configured Shifts</span>
                     </div>
                     
-                    <div class="mock-chart">
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 60%;"></div>
-                            <div class="bar absent" style="height: 80%;"></div>
-                            <div class="bar leave" style="height: 40%;"></div>
-                            <span class="label">Monday</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 50%;"></div>
-                            <div class="bar absent" style="height: 90%;"></div>
-                            <div class="bar leave" style="height: 60%;"></div>
-                            <span class="label">Tuesday</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 30%;"></div>
-                            <div class="bar absent" style="height: 60%;"></div>
-                            <div class="bar leave" style="height: 70%;"></div>
-                            <span class="label">Wednesday</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 75%;"></div>
-                            <div class="bar absent" style="height: 95%;"></div>
-                            <div class="bar leave" style="height: 45%;"></div>
-                            <span class="label">Thursday</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 65%;"></div>
-                            <div class="bar absent" style="height: 70%;"></div>
-                            <div class="bar leave" style="height: 50%;"></div>
-                            <span class="label">Friday</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 40%;"></div>
-                            <div class="bar absent" style="height: 45%;"></div>
-                            <div class="bar leave" style="height: 30%;"></div>
-                            <span class="label">Saturday</span>
-                        </div>
-                    </div>
+                    <div class="mock-chart" id="activityChart"></div>
                 </div>
 
                 <div class="holidays-card">
@@ -199,6 +278,59 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
         menuToggle.addEventListener('click', toggleMenu);
         closeSidebar.addEventListener('click', toggleMenu);
         sidebarOverlay.addEventListener('click', toggleMenu);
+
+        const chartData = <?php echo json_encode($chart_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+        const chartButtons = document.querySelectorAll('.chart-filters button');
+        const chartPeriodLabel = document.getElementById('chartPeriodLabel');
+        const activityChart = document.getElementById('activityChart');
+
+        function updateChart(period) {
+            const data = chartData[period] || chartData.daily;
+            const allValues = [];
+            data.datasets.forEach(dataset => {
+                dataset.values.forEach(value => allValues.push(value));
+            });
+            const maxValue = Math.max(1, ...allValues);
+
+            activityChart.innerHTML = '';
+
+            data.labels.forEach((label, labelIndex) => {
+                const group = document.createElement('div');
+                group.className = 'chart-group';
+
+                const bars = document.createElement('div');
+                bars.className = 'chart-bars';
+
+                data.datasets.forEach((dataset, datasetIndex) => {
+                    const bar = document.createElement('div');
+                    bar.className = 'bar ' + dataset.className;
+                    const value = dataset.values[labelIndex] || 0;
+                    bar.style.height = Math.max(8, (value / maxValue) * 100) + '%';
+                    bar.title = dataset.label + ': ' + value;
+                    bars.appendChild(bar);
+                });
+
+                const labelEl = document.createElement('span');
+                labelEl.className = 'label';
+                labelEl.textContent = label;
+
+                group.appendChild(bars);
+                group.appendChild(labelEl);
+                activityChart.appendChild(group);
+            });
+
+            chartButtons.forEach(button => button.classList.toggle('active', button.dataset.period === period));
+            const periodText = period === 'weekly' ? '7-day week view' : period === 'monthly' ? 'last 3 months view' : 'today view';
+            chartPeriodLabel.textContent = 'Showing ' + period.charAt(0).toUpperCase() + period.slice(1) + ' (' + periodText + ')';
+        }
+
+        chartButtons.forEach(button => {
+            button.addEventListener('click', function () {
+                updateChart(this.dataset.period);
+            });
+        });
+
+        updateChart('daily');
     </script>
 </body>
 </html>

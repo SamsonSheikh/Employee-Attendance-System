@@ -47,12 +47,17 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 <ul class="sidebar-links">
                     <li><a href="../../pages/user-admin/admin_dashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li class="active"><a href="../../pages/user-admin/adminusers.php"><i class="ph ph-users"></i> Master Users</a></li>
+                    <li><a href="../../pages/user-admin/adminreports.php"><i class="ph ph-file-text"></i> Reports</a></li>
+                    <li><a href="../../pages/user-admin/adminorg.php"><i class="ph ph-buildings"></i> Organization</a></li>
                     <li><a href="#"><i class="ph ph-gear"></i> Settings</a></li>
-                    <li><a href="#"><i class="ph ph-file-text"></i> Reports</a></li>
                 </ul>
             </div>
             
-            <div class="sidebar-footer"></div>
+            <div class="sidebar-footer">
+                <a href="../../pages/public/logout.php" class="sidebar-logout">
+                    <i class="ph ph-sign-out"></i> Logout
+                </a>
+            </div>
         </aside>
 
         <main class="content">

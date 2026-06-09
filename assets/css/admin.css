@@ -156,8 +156,27 @@ body {
 
 .sidebar-footer {
     margin-top: auto;
-    padding: 1rem 1.5rem;
+    padding: 1rem 1.5rem 0;
     border-top: 1px solid var(--border-color);
+}
+
+.sidebar-logout {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    border-radius: 10px;
+    text-decoration: none;
+    color: #c53030;
+    background-color: #fff5f5;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.sidebar-logout:hover {
+    background-color: #ffeaea;
+    color: #9b2c2c;
+    transform: translateX(2px);
 }
 
 /* --- Main Content Area --- */
@@ -308,27 +327,42 @@ body {
 
 /* Mock CSS Bar Chart */
 .mock-chart {
-    height: 250px;
+    height: 260px;
     display: flex;
     justify-content: space-around;
     align-items: flex-end;
+    gap: 0.75rem;
     padding-bottom: 2rem;
     border-bottom: 1px dashed var(--border-color);
     position: relative;
+    overflow-x: auto;
 }
 
 .chart-group {
     display: flex;
-    gap: 6px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    min-width: 64px;
     height: 100%;
-    align-items: flex-end;
     position: relative;
+}
+
+.chart-bars {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+    height: 100%;
 }
 
 .bar {
     width: 15px;
+    min-height: 8px;
     border-radius: 2px 2px 0 0;
     transition: all 0.2s;
+    display: block;
 }
 
 .bar.present {
@@ -344,13 +378,10 @@ body {
 }
 
 .chart-group .label {
-    position: absolute;
-    bottom: -25px;
-    left: 50%;
-    transform: translateX(-50%);
     font-size: 0.8rem;
     color: var(--text-muted);
     white-space: nowrap;
+    text-align: center;
 }
 
 /* --- Admin Actions List --- */
@@ -369,6 +400,23 @@ body {
 
 .holiday-list li:last-child {
     border-bottom: none;
+}
+
+.report-kpi-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.report-kpi-card {
+    background: linear-gradient(135deg, #fffaf5 0%, #fff5ef 100%);
+}
+
+@media (max-width: 1024px) {
+    .report-kpi-actions {
+        justify-content: flex-start;
+    }
 }
 
 .holiday-date {
@@ -932,9 +980,10 @@ body {
     .mock-chart .bar {
         width: 10px;
     }
-    
+
     .mock-chart .chart-group {
-        gap: 3px;
+        min-width: 56px;
+        gap: 0.35rem;
     }
 
     .form-row {

@@ -21,8 +21,8 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
 
     <header class="mobile-header">
         <div class="admin-brand">
-            <span class="brand-icon"><i class="ph-fill ph-shield-admin"></i></span>
-            <span class="brand-text">Admin Panel</span>
+            <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
+            <span class="brand-text">FlowTime</span>
         </div>
         <button class="menu-toggle" id="menuToggle" aria-label="Toggle Sidebar">
             <i class="ph ph-list"></i>
@@ -39,8 +39,8 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
             </button>
 
             <div class="admin-brand desktop-brand">
-                <span class="brand-icon"><i class="ph-fill ph-shield-admin"></i></span>
-                <span class="brand-text">Admin Panel</span>
+                <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
+                <span class="brand-text">FlowTime</span>
             </div>
 
             <div class="sidebar-menu-wrapper">

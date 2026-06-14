@@ -33,11 +33,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $_SESSION["username"] = $email;
                 $_SESSION["first_name"] = $first_name;
                 
-                // Redirect based on role (Assuming 1=Admin)
+                // Redirect based on role (1=Admin, 2=HR, 3=Employee)
                 if ($role_id == 1) {
                     header("location: ../../pages/user-admin/admin_dashboard.php");
+                } elseif ($role_id == 2) {
+                    header("location: ../../pages/hr/hrdashboard.php");
                 } else {
-                    header("location: ../../pages/hr/hremployees.php");
+                    header("location: ../../pages/user-employee/empdashboard.php");
                 }
                 exit;
             }
@@ -47,15 +49,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // 2. Fallback to hardcoded dummy accounts if DB login fails
     if (!$db_login_success) {
-        if ($username === "admin" && $password === "password123") {
+        if ($username === "admin" && $password === "admin123") {
             $_SESSION["loggedin"] = true;
             $_SESSION["username"] = $username;
             header("location: ../../pages/user-admin/admin_dashboard.php");
             exit;
-        } elseif ($username === "employee" && $password === "dummy123") {
+        } elseif ($username === "hr" && $password === "hr123") {
             $_SESSION["loggedin"] = true;
             $_SESSION["username"] = $username;
-            header("location: ../../pages/hr/hremployees.php");
+            header("location: ../../pages/hr/hrdashboard.php");
+            exit;
+        } elseif ($username === "employee" && $password === "employee123") {
+            $_SESSION["loggedin"] = true;
+            $_SESSION["username"] = $username;
+            header("location: ../../pages/user-employee/empdashboard.php");
             exit;
         } else {
             $password_err = "Invalid username or password.";
@@ -79,8 +86,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <div class="login-card">
             <div class="login-header">
                 <div class="logo">
-                    <span class="logo-icon"><i class="ph-fill ph-person-simple-walk"></i></span>
-                    <span class="logo-text">Vizitor</span>
+                    <span class="logo-icon"><i class="ph-fill ph-clock-user"></i></span>
+                    <span class="logo-text">FlowTime</span>
                 </div>
                 <h2>Welcome Back</h2>
                 <p>Sign in to continue to your dashboard</p>
@@ -106,11 +113,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
                 <div class="form-group">
                     <button type="submit" class="btn-primary">Sign In</button>
-                </div>
-                <div class="form-group" style="text-align: center; margin-top: 15px; color: #718096; font-size: 0.9rem;">
-                    <p><strong>Admin Dummy Account</strong><br>User: admin | Pass: password123</p>
-                    <p style="margin-top: 5px;"><strong>Employee Dummy Account</strong><br>User: employee | Pass: dummy123</p>
-                    <p style="margin-top: 5px; color: #4a5568;"><strong>SQL Test Account</strong><br>User: test.employee@flowtime.com | Pass: SecurePass123!</p>
                 </div>
             </form>
         </div>

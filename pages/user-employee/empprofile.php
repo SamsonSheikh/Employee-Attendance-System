@@ -51,7 +51,7 @@ if (!$user_info) {
     <title>My Profile</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="../../assets/css/hrdashboard.css">
+    <link rel="stylesheet" href="../../assets/css/employeedashboard.css">
     <style>
         .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; }
         .card { background-color: var(--bg-card); border-radius: 12px; padding: 1.5rem; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
@@ -65,31 +65,14 @@ if (!$user_info) {
     </style>
 </head>
 <body>
-    <nav class="top-navbar">
-        <div class="logo">
-            <span class="logo-icon"><i class="ph-fill ph-person-simple-walk"></i></span>
-            <span class="logo-text">Vizitor</span>
-        </div>
-        <ul class="nav-links">
-            <li><span class="active">Employee Portal</span></li>
-        </ul>
-        <div class="user-controls">
-            <div class="user-profile">
-                <img src="https://ui-avatars.com/api/?name=Employee&background=random" alt="User Avatar">
-            </div>
-        </div>
-    </nav>
+    <header class="dashboard-header">
+        <a href="empdashboard.php" class="logo">
+            <i class="ph-fill ph-clock-user"></i>
+            FlowTime
+        </a>
+        <a href="../public/logout.php" class="logout-btn"><i class="ph ph-sign-out"></i> Logout</a>
+    </header>
 
-    <div class="main-wrapper">
-        <aside class="sidebar">
-            <ul class="sidebar-links">
-                <li><a href="empdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
-                <li><a href="empattendance.php"><i class="ph ph-clock"></i> My Timesheets</a></li>
-                <li><a href="empleaves.php"><i class="ph ph-calendar-blank"></i> Time-Off Requests</a></li>
-                <li class="active"><a href="empprofile.php"><i class="ph ph-user"></i> My Profile</a></li>
-                <li><a href="../public/logout.php" style="color: var(--primary-color);"><i class="ph ph-sign-out"></i> Logout</a></li>
-            </ul>
-        </aside>
         <main class="content">
             <header class="page-header">
                 <h1>My Profile & Security</h1>
@@ -116,6 +99,5 @@ if (!$user_info) {
                 </div>
             </div>
         </main>
-    </div>
 </body>
 </html>

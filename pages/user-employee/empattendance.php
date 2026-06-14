@@ -21,7 +21,7 @@ $attendance = $stmt->get_result();
     <title>My Timesheets</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="../../assets/css/hrdashboard.css">
+    <link rel="stylesheet" href="../../assets/css/employeedashboard.css">
     <style>
         .table-container { background: var(--bg-card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02); border: 1px solid var(--border-color); overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem; }
@@ -37,31 +37,14 @@ $attendance = $stmt->get_result();
     </style>
 </head>
 <body>
-    <nav class="top-navbar">
-        <div class="logo">
-            <span class="logo-icon"><i class="ph-fill ph-person-simple-walk"></i></span>
-            <span class="logo-text">Vizitor</span>
-        </div>
-        <ul class="nav-links">
-            <li><span class="active">Employee Portal</span></li>
-        </ul>
-        <div class="user-controls">
-            <div class="user-profile">
-                <img src="https://ui-avatars.com/api/?name=Employee&background=random" alt="User Avatar">
-            </div>
-        </div>
-    </nav>
+    <header class="dashboard-header">
+        <a href="empdashboard.php" class="logo">
+            <i class="ph-fill ph-clock-user"></i>
+            FlowTime
+        </a>
+        <a href="../public/logout.php" class="logout-btn"><i class="ph ph-sign-out"></i> Logout</a>
+    </header>
 
-    <div class="main-wrapper">
-        <aside class="sidebar">
-            <ul class="sidebar-links">
-                <li><a href="empdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
-                <li class="active"><a href="empattendance.php"><i class="ph ph-clock"></i> My Timesheets</a></li>
-                <li><a href="empleaves.php"><i class="ph ph-calendar-blank"></i> Time-Off Requests</a></li>
-                <li><a href="empprofile.php"><i class="ph ph-user"></i> My Profile</a></li>
-                <li><a href="../public/logout.php" style="color: var(--primary-color);"><i class="ph ph-sign-out"></i> Logout</a></li>
-            </ul>
-        </aside>
         <main class="content">
             <header class="page-header">
                 <h1>My Timesheets</h1>
@@ -99,6 +82,5 @@ $attendance = $stmt->get_result();
                 </table>
             </div>
         </main>
-    </div>
 </body>
 </html>

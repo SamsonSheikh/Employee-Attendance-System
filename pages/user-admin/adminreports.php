@@ -14,6 +14,30 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="../../assets/css/admin.css">
+    <style>
+        /* Chart tooltip and bottom summary styles (copied from dashboard) */
+        .chart-tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            z-index: 9999;
+            white-space: nowrap;
+            transform: translate(-50%, -8px);
+        }
+        .chart-bottom-summary {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            align-items: center;
+        }
+        .summary-item { display:flex; align-items:center; gap:8px; color:#333; }
+        .summary-item .value { font-weight:600; margin-left:6px; color:#1f2937; }
+        .chart-legend, .chart-bottom-summary { flex-wrap:wrap }
+    </style>
 </head>
 <body>
     <header class="mobile-header">
@@ -66,7 +90,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                     <div class="card-header">
                         <div>
                             <h2>Report Volume Overview</h2>
-                            <p class="section-desc">Daily, weekly, and monthly report demand to support urgent review meetings.</p>
+                            <p id="chartPeriodLabel" class="section-desc">Showing Daily activity summary</p>
                         </div>
                         <div class="report-kpi-actions">
                             <button type="button" class="btn-secondary" id="downloadKpiBtn"><i class="ph ph-download-simple"></i> Download File</button>
@@ -81,22 +105,34 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
 
                     <div class="mock-chart" aria-label="Report volume graph">
                         <div class="chart-group">
-                            <div class="bar present" style="height: 68%;"></div>
-                            <div class="bar absent" style="height: 82%;"></div>
-                            <div class="bar leave" style="height: 94%;"></div>
+                            <div class="bar present" style="height:90%; width:36px;" data-value="18" data-key="daily"></div>
                             <span class="label">Daily</span>
                         </div>
                         <div class="chart-group">
-                            <div class="bar present" style="height: 54%;"></div>
-                            <div class="bar absent" style="height: 70%;"></div>
-                            <div class="bar leave" style="height: 88%;"></div>
+                            <div class="bar absent" style="height:78%; width:36px;" data-value="96" data-key="weekly"></div>
                             <span class="label">Weekly</span>
                         </div>
                         <div class="chart-group">
-                            <div class="bar present" style="height: 44%;"></div>
-                            <div class="bar absent" style="height: 58%;"></div>
-                            <div class="bar leave" style="height: 76%;"></div>
+                            <div class="bar leave" style="height:66%; width:36px;" data-value="340" data-key="monthly"></div>
                             <span class="label">Monthly</span>
+                        </div>
+                    </div>
+
+                    <div class="chart-bottom-summary" id="chartBottomSummary">
+                        <div class="summary-item">
+                            <span class="dot present"></span>
+                            <span class="summary-label">Daily Reports</span>
+                            <span class="value" id="summaryDaily">18</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="dot absent"></span>
+                            <span class="summary-label">Weekly Reports</span>
+                            <span class="value" id="summaryWeekly">96</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="dot leave"></span>
+                            <span class="summary-label">Monthly Reports</span>
+                            <span class="value" id="summaryMonthly">340</span>
                         </div>
                     </div>
                 </article>
@@ -283,6 +319,75 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
             link.click();
             URL.revokeObjectURL(url);
         });
+
+        // Simple hover tooltip for static report bars
+        (function () {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'chart-tooltip';
+            tooltip.style.display = 'none';
+            document.body.appendChild(tooltip);
+
+            const summaryDaily = document.getElementById('summaryDaily');
+            const summaryWeekly = document.getElementById('summaryWeekly');
+            const summaryMonthly = document.getElementById('summaryMonthly');
+
+            document.querySelectorAll('.mock-chart .chart-group').forEach(group => {
+                const bar = group.querySelector('.bar');
+                const label = group.querySelector('.label')?.textContent || '';
+                const value = bar ? bar.getAttribute('data-value') || '0' : '0';
+
+                group.addEventListener('mouseenter', (ev) => {
+                    tooltip.innerHTML = '<strong>' + label + '</strong><br>' + value;
+                    tooltip.style.display = 'block';
+                    positionTooltip(ev);
+                });
+                group.addEventListener('mousemove', (ev) => positionTooltip(ev));
+                group.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+                // clicking a group will also populate the bottom summary values (optional)
+                group.addEventListener('click', () => {
+                    // set corresponding summary values based on which bar clicked
+                    const key = bar.getAttribute('data-key');
+                    if (key === 'daily') {
+                        summaryDaily.textContent = value;
+                    } else if (key === 'weekly') {
+                        summaryWeekly.textContent = value;
+                    } else if (key === 'monthly') {
+                        summaryMonthly.textContent = value;
+                    }
+                });
+            });
+
+            function positionTooltip(ev) {
+                const offsetX = 16; // horizontal offset from cursor
+                const offsetY = 40; // vertical offset above cursor
+                const padding = 8;
+                // desired position
+                let x = ev.pageX + offsetX;
+                let y = ev.pageY - offsetY;
+
+                // measure tooltip (may be display:block already)
+                tooltip.style.left = '0px';
+                tooltip.style.top = '0px';
+                const rect = tooltip.getBoundingClientRect();
+                const ttWidth = rect.width || 120;
+                const ttHeight = rect.height || 28;
+
+                // clamp to viewport horizontally
+                const maxX = window.pageXOffset + window.innerWidth - ttWidth - padding;
+                if (x > maxX) x = maxX;
+                if (x < window.pageXOffset + padding) x = window.pageXOffset + padding;
+
+                // clamp vertically (don't let it go off the top)
+                const minY = window.pageYOffset + padding;
+                if (y < minY) y = ev.pageY + offsetY; // if not enough space above, put below cursor
+
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = y + 'px';
+            }
+        })();
+
+        // (Interactive chart removed — reports uses a static 3-column mock chart)
     </script>
 </body>
 </html>

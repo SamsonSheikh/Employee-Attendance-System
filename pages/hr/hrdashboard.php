@@ -2,11 +2,10 @@
 session_start();
 
 // 1. Security Check: Ensure they are logged in and have HR/Admin privileges
-if (!isset($_SESSION['user_id'])) {
-    // header("Location: login.php");
-    // exit();
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+    header("Location: ../public/login.php");
+    exit();
 }
-// Uncomment the above in production!
 
 // 2. Database Connection
 require_once '../../includes/db_connect.php';

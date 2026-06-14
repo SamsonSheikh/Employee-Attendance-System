@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once '../../includes/db_connect.php';
 
 // If user is already logged in, redirect them to the dashboard inside private/
 if (isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true) {
@@ -14,14 +15,51 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST["username"]);
     $password = trim($_POST["password"]);
 
-    if ($username === "admin" && $password === "password123") {
-        $_SESSION["loggedin"] = true;
-        $_SESSION["username"] = $username;
-        // Redirect into the private dashboard folder
-        header("location: ../../pages/user-admin/admin_dashboard.php");
-        exit;
-    } else {
-        $password_err = "Invalid username or password.";
+    $db_login_success = false;
+
+    // 1. Try to fetch from SQL database
+    $stmt = $conn->prepare("SELECT user_id, first_name, email, password_hash, role_id FROM users WHERE email = ?");
+    if ($stmt) {
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $stmt->store_result();
+
+        if ($stmt->num_rows == 1) {
+            $stmt->bind_result($user_id, $first_name, $email, $password_hash, $role_id);
+            if ($stmt->fetch() && password_verify($password, $password_hash)) {
+                $db_login_success = true;
+                $_SESSION["loggedin"] = true;
+                $_SESSION["user_id"] = $user_id;
+                $_SESSION["username"] = $email;
+                $_SESSION["first_name"] = $first_name;
+                
+                // Redirect based on role (Assuming 1=Admin)
+                if ($role_id == 1) {
+                    header("location: ../../pages/user-admin/admin_dashboard.php");
+                } else {
+                    header("location: ../../pages/hr/hremployees.php");
+                }
+                exit;
+            }
+        }
+        $stmt->close();
+    }
+
+    // 2. Fallback to hardcoded dummy accounts if DB login fails
+    if (!$db_login_success) {
+        if ($username === "admin" && $password === "password123") {
+            $_SESSION["loggedin"] = true;
+            $_SESSION["username"] = $username;
+            header("location: ../../pages/user-admin/admin_dashboard.php");
+            exit;
+        } elseif ($username === "employee" && $password === "dummy123") {
+            $_SESSION["loggedin"] = true;
+            $_SESSION["username"] = $username;
+            header("location: ../../pages/hr/hremployees.php");
+            exit;
+        } else {
+            $password_err = "Invalid username or password.";
+        }
     }
 }
 ?>
@@ -68,6 +106,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
                 <div class="form-group">
                     <button type="submit" class="btn-primary">Sign In</button>
+                </div>
+                <div class="form-group" style="text-align: center; margin-top: 15px; color: #718096; font-size: 0.9rem;">
+                    <p><strong>Admin Dummy Account</strong><br>User: admin | Pass: password123</p>
+                    <p style="margin-top: 5px;"><strong>Employee Dummy Account</strong><br>User: employee | Pass: dummy123</p>
+                    <p style="margin-top: 5px; color: #4a5568;"><strong>SQL Test Account</strong><br>User: test.employee@flowtime.com | Pass: SecurePass123!</p>
                 </div>
             </form>
         </div>

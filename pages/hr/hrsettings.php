@@ -2,9 +2,9 @@
 session_start();
 
 // Security Check
-if (!isset($_SESSION['user_id'])) {
-    // header("Location: login.php");
-    // exit();
+if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
+    header("Location: ../public/login.php");
+    exit();
 }
 
 require_once '../../includes/db_connect.php';

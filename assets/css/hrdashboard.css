@@ -356,28 +356,52 @@ body {
 .dot.absent { background-color: var(--color-absent); }
 .dot.leave { background-color: var(--color-leave); }
 
-/* Mock CSS Bar Chart */
+/* Mock CSS Bar Chart - UPDATED FOR SCROLLING */
 .mock-chart {
     height: 250px;
     display: flex;
-    justify-content: space-around;
     align-items: flex-end;
-    padding-bottom: 2rem;
+    padding-bottom: 30px; /* Space for date labels */
     border-bottom: 1px dashed var(--border-color);
     position: relative;
+    justify-content: flex-start; /* Aligns items to the left so they scroll right */
+    overflow-x: auto; /* Enables horizontal scrolling */
+    overflow-y: hidden;
+    gap: 15px; /* Spacing between days */
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar styling for the chart */
+.mock-chart::-webkit-scrollbar {
+    height: 6px;
+}
+.mock-chart::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+.mock-chart::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+.mock-chart::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 .chart-group {
     display: flex;
-    gap: 6px;
+    gap: 3px; /* Tighter gap between the actual Present/Absent/Leave bars */
     height: 100%;
     align-items: flex-end;
     position: relative;
+    flex: 0 0 auto; /* Locks the width so elements don't squish */
+    min-width: 45px; /* Ensures minimum readable width */
+    justify-content: center;
 }
 
 .bar {
     width: 15px;
     border-radius: 2px 2px 0 0;
+    transition: height 0.3s ease; /* Smooth animation when height changes */
 }
 
 .bar.present { background-color: var(--color-present); }
@@ -386,10 +410,10 @@ body {
 
 .chart-group .label {
     position: absolute;
-    bottom: -25px;
+    bottom: -25px; /* Position below the dashed border */
     left: 50%;
     transform: translateX(-50%);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -478,12 +502,12 @@ body {
         gap: 1rem;
     }
 
-    .mock-chart .bar {
-        width: 10px; /* Slimmer bars for mobile */
+    /* Mobile Chart Adjustments */
+    .chart-group {
+        min-width: 30px; /* Allow groups to be slightly smaller on phones */
     }
-    
-    .mock-chart .chart-group {
-        gap: 3px;
+    .bar {
+        width: 8px !important; /* Slimmer bars for mobile */
     }
 }
 

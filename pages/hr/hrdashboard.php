@@ -21,9 +21,11 @@ $hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "Kevin";
 // Card 1: Total Employees (From `users` table)
 $emp_query = $conn->query("SELECT COUNT(user_id) AS total FROM users");
 $total_employees = $emp_query ? $emp_query->fetch_assoc()['total'] : 0;
+// Prevent division by zero later in the chart logic
+$safe_total_employees = max(1, $total_employees); 
 
 // Card 2: Present Today (From `attendance_logs` table for CURDATE)
-$present_query = $conn->query("SELECT COUNT(log_id) AS total FROM attendance_logs WHERE log_date = CURDATE() AND clock_in IS NOT NULL");
+$present_query = $conn->query("SELECT COUNT(log_id) AS total FROM attendance_logs WHERE log_date = CURDATE() AND clock_in IS NOT NULL AND status != 'Absent'");
 $present_today = $present_query ? $present_query->fetch_assoc()['total'] : 0;
 
 // Card 3: Late Arrivals Today (From `attendance_logs` ENUM status)
@@ -33,6 +35,68 @@ $late_today = $late_query ? $late_query->fetch_assoc()['total'] : 0;
 // Card 4: Pending Leave Requests (From `leave_requests` ENUM status)
 $pending_query = $conn->query("SELECT COUNT(request_id) AS total FROM leave_requests WHERE approval_status = 'Pending'");
 $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
+
+
+// ==========================================================
+// 5. FETCH DATA FOR THE ATTENDANCE CHART (Last 30 Days)
+// ==========================================================
+$chart_data = [];
+// Pre-fill an array with the last 30 days so dates with 0 data still show up
+for ($i = 29; $i >= 0; $i--) {
+    $date = date('Y-m-d', strtotime("-$i days"));
+    $chart_data[$date] = [
+        'date' => $date, 
+        'label' => date('M j', strtotime($date)), 
+        'present' => 0, 
+        'absent' => 0, 
+        'leave' => 0
+    ];
+}
+
+// Fetch Present and Absent counts per day
+$att_query = "
+    SELECT log_date, 
+           SUM(CASE WHEN clock_in IS NOT NULL AND status != 'Absent' THEN 1 ELSE 0 END) as present_count,
+           SUM(CASE WHEN status = 'Absent' THEN 1 ELSE 0 END) as absent_count
+    FROM attendance_logs 
+    WHERE log_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    GROUP BY log_date
+";
+$att_res = $conn->query($att_query);
+if ($att_res) {
+    while($row = $att_res->fetch_assoc()) {
+        if (isset($chart_data[$row['log_date']])) {
+            $chart_data[$row['log_date']]['present'] = $row['present_count'];
+            $chart_data[$row['log_date']]['absent'] = $row['absent_count'];
+        }
+    }
+}
+
+// Fetch Leave counts per day
+$leave_query = "
+    SELECT start_date, end_date 
+    FROM leave_requests 
+    WHERE approval_status = 'Approved' 
+      AND end_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      AND start_date <= CURDATE()
+";
+$leave_res = $conn->query($leave_query);
+if ($leave_res) {
+    while($row = $leave_res->fetch_assoc()) {
+        $start = strtotime($row['start_date']);
+        $end = strtotime($row['end_date']);
+        // Iterate through each day of the approved leave range
+        for ($current = $start; $current <= $end; $current += 86400) {
+            $d = date('Y-m-d', $current);
+            if (isset($chart_data[$d])) {
+                $chart_data[$d]['leave']++;
+            }
+        }
+    }
+}
+
+// Convert associative array to indexed array for JavaScript
+$chart_data_json = json_encode(array_values($chart_data));
 
 ?>
 <!DOCTYPE html>
@@ -90,7 +154,6 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
             </header>
 
             <section class="stats-grid">
-                
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-users"></i></div>
                     <div class="stat-info">
@@ -98,7 +161,6 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
                         <p>Total Employees</p>
                     </div>
                 </div>
-
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-user-check"></i></div>
                     <div class="stat-info">
@@ -106,7 +168,6 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
                         <p>Present Today</p>
                     </div>
                 </div>
-
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-clock"></i></div>
                     <div class="stat-info">
@@ -114,7 +175,6 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
                         <p>Late Arrivals</p>
                     </div>
                 </div>
-
                 <div class="stat-card">
                     <div class="stat-icon"><i class="ph ph-clipboard-text"></i></div>
                     <div class="stat-info">
@@ -122,7 +182,6 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
                         <p>Pending Leaves</p>
                     </div>
                 </div>
-
             </section>
 
             <section class="data-grid">
@@ -131,9 +190,9 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
                     <div class="card-header">
                         <h2>Attendance Overview</h2>
                         <div class="chart-filters">
-                            <button>Today</button>
-                            <button>Month</button>
-                            <button class="active">Weekly</button>
+                            <button id="btnToday" onclick="renderChart(1)">Today</button>
+                            <button id="btnWeekly" class="active" onclick="renderChart(7)">Weekly</button>
+                            <button id="btnMonthly" onclick="renderChart(30)">Month</button>
                         </div>
                     </div>
                     <div class="chart-legend">
@@ -142,32 +201,8 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
                         <span class="legend-item"><span class="dot leave"></span> Leave</span>
                     </div>
                     
-                    <div class="mock-chart">
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 60%;"></div>
-                            <div class="bar absent" style="height: 80%;"></div>
-                            <div class="bar leave" style="height: 40%;"></div>
-                            <span class="label">July 4</span>
+                    <div class="mock-chart" id="dynamicChart">
                         </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 50%;"></div>
-                            <div class="bar absent" style="height: 90%;"></div>
-                            <div class="bar leave" style="height: 60%;"></div>
-                            <span class="label">July 5</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 30%;"></div>
-                            <div class="bar absent" style="height: 60%;"></div>
-                            <div class="bar leave" style="height: 70%;"></div>
-                            <span class="label">July 6</span>
-                        </div>
-                        <div class="chart-group">
-                            <div class="bar present" style="height: 75%;"></div>
-                            <div class="bar absent" style="height: 95%;"></div>
-                            <div class="bar leave" style="height: 45%;"></div>
-                            <span class="label">July 7</span>
-                        </div>
-                    </div>
                 </div>
 
                 <div class="holidays-card">
@@ -203,6 +238,7 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
     </div>
 
     <script>
+        // --- Sidebar Logic ---
         const menuToggle = document.getElementById('menuToggle');
         const closeSidebar = document.getElementById('closeSidebar');
         const sidebar = document.getElementById('sidebar');
@@ -216,6 +252,65 @@ $pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
         menuToggle.addEventListener('click', toggleMenu);
         closeSidebar.addEventListener('click', toggleMenu);
         sidebarOverlay.addEventListener('click', toggleMenu);
+
+
+        // --- Dynamic Chart Logic ---
+        // Grab data prepared by PHP
+        const chartData = <?php echo $chart_data_json; ?>;
+        const totalEmployees = <?php echo $safe_total_employees; ?>;
+        
+        function renderChart(days) {
+            const chartContainer = document.getElementById('dynamicChart');
+            chartContainer.innerHTML = ''; // Clear existing bars
+
+            // Update active state on buttons
+            document.getElementById('btnToday').classList.remove('active');
+            document.getElementById('btnWeekly').classList.remove('active');
+            document.getElementById('btnMonthly').classList.remove('active');
+            
+            if (days === 1) document.getElementById('btnToday').classList.add('active');
+            else if (days === 7) document.getElementById('btnWeekly').classList.add('active');
+            else if (days === 30) document.getElementById('btnMonthly').classList.add('active');
+
+            // Get only the requested number of days from the end of the array
+            const dataSlice = chartData.slice(-days);
+            
+            // Adjust bar width based on how many days we are showing to prevent clustering
+            const barWidthStyle = days === 30 ? 'width: 8px;' : 'width: 15px;';
+
+            dataSlice.forEach(day => {
+                // Calculate heights as a percentage of total employees
+                const presentPct = (day.present / totalEmployees) * 100;
+                const absentPct = (day.absent / totalEmployees) * 100;
+                const leavePct = (day.leave / totalEmployees) * 100;
+
+                // Create the bar HTML
+                const group = document.createElement('div');
+                group.className = 'chart-group';
+                
+                // If viewing a full month, only show the date number to save space
+                const displayLabel = days === 30 ? day.label.split(' ')[1] : day.label;
+
+                group.innerHTML = `
+                    <div class="bar present" style="height: ${presentPct}%; ${barWidthStyle}" title="Present: ${day.present}"></div>
+                    <div class="bar absent" style="height: ${absentPct}%; ${barWidthStyle}" title="Absent: ${day.absent}"></div>
+                    <div class="bar leave" style="height: ${leavePct}%; ${barWidthStyle}" title="Leave: ${day.leave}"></div>
+                    <span class="label">${displayLabel}</span>
+                `;
+                
+                chartContainer.appendChild(group);
+            });
+            
+            // Auto-scroll to the end (most recent day) when changing views
+            setTimeout(() => {
+                chartContainer.scrollLeft = chartContainer.scrollWidth;
+            }, 10);
+        }
+
+        // Initialize the chart with the Weekly view on page load
+        document.addEventListener("DOMContentLoaded", () => {
+            renderChart(7);
+        });
     </script>
 </body>
 </html>

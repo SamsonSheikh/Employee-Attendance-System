@@ -20,8 +20,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_employee'])) {
     $last_name = trim($_POST['last_name']);
     $email = trim($_POST['email']);
     $dept_id = intval($_POST['department_id']);
-    $role_id = intval($_POST['role_id']);
     $shift_id = intval($_POST['shift_id']);
+    
+    // Automatically fetch the role_id for "employee"
+    $role_query = $conn->query("SELECT role_id FROM roles WHERE role_name = 'employee' LIMIT 1");
+    // Fallback to 3 if the query fails, assuming 'admin'=1, 'hr'=2, 'employee'=3
+    $role_id = ($role_query && $role_query->num_rows > 0) ? $role_query->fetch_assoc()['role_id'] : 3;
     
     // Set a default temporary password for new accounts
     $default_password = "Password123!";
@@ -53,7 +57,6 @@ $users_result = $conn->query($users_query);
 
 // 2. Fetch Dropdown Options for the Modal
 $departments = $conn->query("SELECT * FROM departments ORDER BY department_name ASC");
-$roles = $conn->query("SELECT * FROM roles ORDER BY role_name ASC");
 $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
 ?>
 <!DOCTYPE html>
@@ -216,6 +219,7 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                         <label>Email Address</label>
                         <input type="email" name="email" required placeholder="jane.doe@company.com">
                     </div>
+                    
                     <div class="form-group">
                         <label>Department</label>
                         <select name="department_id" required>
@@ -226,15 +230,6 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>System Role</label>
-                        <select name="role_id" required>
-                            <option value="">Select Role</option>
-                            <?php while($role = $roles->fetch_assoc()): ?>
-                                <option value="<?php echo $role['role_id']; ?>"><?php echo htmlspecialchars(ucfirst($role['role_name'])); ?></option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
-                    <div class="form-group full-width">
                         <label>Work Shift</label>
                         <select name="shift_id" required>
                             <option value="">Select Shift</option>

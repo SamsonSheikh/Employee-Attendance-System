@@ -10,10 +10,7 @@
     /* Chart Colors */
     --color-present: #f26b4d; /* Orange */
     --color-absent: #48bb78;  /* Green */
-<<<<<<< HEAD
     --color-holiday: #4299e1; /* Blue */
-=======
->>>>>>> 6e6b7580a29aa81efa73a57baa2e55ccf33a51f4
 }
 
 * {
@@ -335,10 +332,7 @@ body {
 }
 .dot.present { background-color: var(--color-present); }
 .dot.absent { background-color: var(--color-absent); }
-<<<<<<< HEAD
 .dot.holiday { background-color: var(--color-holiday); }
-=======
->>>>>>> 6e6b7580a29aa81efa73a57baa2e55ccf33a51f4
 
 /* =========================================
    NEW CALENDAR STYLES
@@ -357,7 +351,6 @@ body {
     color: var(--text-main);
 }
 
-<<<<<<< HEAD
 .calendar-controls button {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -365,34 +358,6 @@ body {
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.85rem;
-=======
-.chart-group {
-    display: flex;
-    gap: 3px; /* Tighter gap between the actual Present/Absent/Leave bars */
-    height: 100%;
-    align-items: flex-end;
-    position: relative;
-    flex: 0 0 auto; /* Locks the width so elements don't squish */
-    min-width: 45px; /* Ensures minimum readable width */
-    justify-content: center;
-}
-
-.bar {
-    width: 15px;
-    border-radius: 2px 2px 0 0;
-    transition: height 0.3s ease; /* Smooth animation when height changes */
-}
-
-.bar.present { background-color: var(--color-present); }
-.bar.absent { background-color: var(--color-absent); }
-
-.chart-group .label {
-    position: absolute;
-    bottom: -25px; /* Position below the dashed border */
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.75rem;
->>>>>>> 6e6b7580a29aa81efa73a57baa2e55ccf33a51f4
     color: var(--text-muted);
     transition: 0.2s;
     display: flex;

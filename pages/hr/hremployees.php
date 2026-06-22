@@ -11,32 +11,47 @@ require_once '../../includes/db_connect.php';
 
 // Fetch HR User's Name
 $hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "Kevin";
+$days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // ==========================================================
-// HANDLE "ADD EMPLOYEE" FORM SUBMISSION
+// HANDLE FORM SUBMISSIONS (ADD & DELETE)
 // ==========================================================
+$message = "";
+$message_type = "success";
+
+// Handle Add Employee
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_employee'])) {
     $first_name = trim($_POST['first_name']);
     $last_name = trim($_POST['last_name']);
     $email = trim($_POST['email']);
     $dept_id = intval($_POST['department_id']);
-    $shift_id = intval($_POST['shift_id']);
-    
-    // Automatically fetch the role_id for "employee"
-    $role_query = $conn->query("SELECT role_id FROM roles WHERE role_name = 'employee' LIMIT 1");
-    // Fallback to 3 if the query fails, assuming 'admin'=1, 'hr'=2, 'employee'=3
-    $role_id = ($role_query && $role_query->num_rows > 0) ? $role_query->fetch_assoc()['role_id'] : 3;
+    $role_id = intval($_POST['role_id']);
     
     // Set a default temporary password for new accounts
     $default_password = "Password123!";
     $password_hash = password_hash($default_password, PASSWORD_DEFAULT);
 
-    $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, email, password_hash, department_id, role_id, shift_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssssiii", $first_name, $last_name, $email, $password_hash, $dept_id, $role_id, $shift_id);
+    $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, email, password_hash, department_id, role_id) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssssii", $first_name, $last_name, $email, $password_hash, $dept_id, $role_id);
     
     if ($stmt->execute()) {
-        header("Location: hremployees.php?success=1");
-        exit();
+        $message = "Employee added successfully! Default password is: Password123!";
+    } else {
+        $message = "Error adding employee. Email might already exist.";
+        $message_type = "error";
+    }
+    $stmt->close();
+}
+
+// Handle Delete (Deactivate) Employee
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
+    $del_id = intval($_POST['delete_user_id']);
+    // Note: Performing a hard delete since 'is_active' doesn't exist in the schema.
+    // The ON DELETE CASCADE in the DB will automatically clean up their attendance/schedules.
+    $stmt = $conn->prepare("DELETE FROM users WHERE user_id = ?");
+    $stmt->bind_param("i", $del_id);
+    if($stmt->execute()) {
+        $message = "Employee account deactivated.";
     }
     $stmt->close();
 }
@@ -44,20 +59,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_employee'])) {
 // ==========================================================
 // FETCH DATA FOR DISPLAY & FORMS
 // ==========================================================
-// 1. Fetch Users Master List
+
+// Capture Search and Filter Parameters
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$filter_dept_id = isset($_GET['dept_id']) ? $_GET['dept_id'] : '';
+
+// 1. Fetch Departments (For Modals)
+$departments = [];
+$depts_res = $conn->query("SELECT * FROM departments ORDER BY department_name ASC");
+if($depts_res) {
+    while($d = $depts_res->fetch_assoc()) {
+        $departments[] = $d;
+    }
+}
+
+// 2. Fetch Roles (For Add Employee Modal)
+$roles = $conn->query("SELECT * FROM roles ORDER BY role_name ASC");
+
+// Determine selected department name for the filter button
+$selected_dept_name = 'All Departments';
+if ($filter_dept_id !== '') {
+    foreach ($departments as $dept) {
+        if ($dept['department_id'] == $filter_dept_id) {
+            $selected_dept_name = $dept['department_name'];
+            break;
+        }
+    }
+}
+
+// 3. Fetch Users Master List with Search & Filters
 $users_query = "
-    SELECT u.*, d.department_name, r.role_name, s.shift_name, s.start_time, s.end_time
+    SELECT u.user_id, u.first_name, u.last_name, u.email, u.created_at, 
+           d.department_name, r.role_name
     FROM users u
     LEFT JOIN departments d ON u.department_id = d.department_id
     LEFT JOIN roles r ON u.role_id = r.role_id
-    LEFT JOIN shifts s ON u.shift_id = s.shift_id
-    ORDER BY u.created_at DESC
+    WHERE 1=1
 ";
-$users_result = $conn->query($users_query);
+$params = [];
+$types = "";
 
-// 2. Fetch Dropdown Options for the Modal
-$departments = $conn->query("SELECT * FROM departments ORDER BY department_name ASC");
-$shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
+if (!empty($search)) {
+    $users_query .= " AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
+    $search_param = "%$search%";
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $types .= "sss";
+}
+
+if ($filter_dept_id !== '') {
+    $users_query .= " AND u.department_id = ?";
+    $params[] = intval($filter_dept_id);
+    $types .= "i";
+}
+
+$users_query .= " ORDER BY u.created_at DESC";
+
+$stmt_users = $conn->prepare($users_query);
+if (!empty($params)) {
+    $stmt_users->bind_param($types, ...$params);
+}
+$stmt_users->execute();
+$users_result = $stmt_users->get_result();
+
+// 4. Fetch all saved schedules and organize them by user_id
+$schedules = [];
+$sched_res = $conn->query("SELECT * FROM employee_schedules");
+if ($sched_res) {
+    while($row = $sched_res->fetch_assoc()) {
+        $schedules[$row['user_id']][$row['day_of_week']] = $row;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -111,7 +184,7 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                 <div class="header-content">
                     <div>
                         <h1>Employee Roster</h1>
-                        <p class="subtitle">Manage staff accounts, roles, and shift assignments.</p>
+                        <p class="subtitle">Manage staff accounts, roles, and schedules.</p>
                     </div>
                     <button class="btn-primary" id="openAddModalBtn">
                         <i class="ph ph-plus"></i> Add Employee
@@ -119,17 +192,31 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                 </div>
             </header>
 
-            <?php if(isset($_GET['success'])): ?>
-                <div class="alert alert-success">
-                    <i class="ph ph-check-circle"></i> Employee added successfully! Default password is: <strong>Password123!</strong>
+            <?php if(!empty($message)): ?>
+                <div class="alert <?php echo $message_type === 'success' ? 'alert-success' : 'alert-danger'; ?>" style="<?php echo $message_type === 'error' ? 'background-color:#fff5f5; color:#c53030; border:1px solid #feb2b2;' : ''; ?>">
+                    <i class="ph ph-info"></i> <?php echo htmlspecialchars($message); ?>
                 </div>
             <?php endif; ?>
 
             <section class="action-bar">
-                <div class="search-box">
-                    <i class="ph ph-magnifying-glass"></i>
-                    <input type="text" id="employeeSearch" placeholder="Search by name or email...">
-                </div>
+                <form method="GET" class="search-filter-group" id="filterForm">
+                    <div class="search-box">
+                        <input type="text" name="search" placeholder="Search by name or email..." value="<?php echo htmlspecialchars($search); ?>">
+                        <button type="submit" class="search-btn" title="Search">
+                            <i class="ph ph-magnifying-glass"></i>
+                        </button>
+                    </div>
+                    
+                    <input type="hidden" name="dept_id" id="filter_dept_id" value="<?php echo htmlspecialchars($filter_dept_id); ?>">
+                    <button type="button" class="filter-dropdown dept-select-btn" onclick="openDeptModal()">
+                        <span id="filter_dept_text"><?php echo htmlspecialchars($selected_dept_name); ?></span>
+                        <i class="ph ph-caret-down"></i>
+                    </button>
+
+                    <?php if(!empty($search) || $filter_dept_id !== ''): ?>
+                        <a href="hremployees.php" class="btn-secondary" style="display:flex; align-items:center; text-decoration:none; padding: 0.55rem 1rem;">Clear Filters</a>
+                    <?php endif; ?>
+                </form>
             </section>
 
             <section class="table-container">
@@ -138,7 +225,7 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                         <tr>
                             <th>Employee Details</th>
                             <th>Department & Role</th>
-                            <th>Assigned Shift</th>
+                            <th>Weekly Schedule</th>
                             <th>Join Date</th>
                             <th>Actions</th>
                         </tr>
@@ -154,32 +241,49 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                                             </div>
                                             <div class="emp-info">
                                                 <span class="emp-name"><?php echo htmlspecialchars($row['first_name'] . ' ' . $row['last_name']); ?></span>
-                                                <span class="emp-email"><?php echo htmlspecialchars($row['email']); ?></span>
+                                                <span class="emp-email" style="display:block; font-size: 0.8rem; color: var(--text-muted);"><?php echo htmlspecialchars($row['email']); ?></span>
                                             </div>
                                         </div>
                                     </td>
                                     <td>
                                         <div class="role-info">
-                                            <span class="dept-badge"><?php echo htmlspecialchars($row['department_name'] ?? 'Unassigned'); ?></span>
-                                            <span class="role-text"><?php echo htmlspecialchars($row['role_name'] ?? 'No Role'); ?></span>
+                                            <span class="dept-badge" style="display:inline-block; margin-bottom:0.2rem; font-weight:600; color:var(--text-main);"><?php echo htmlspecialchars($row['department_name'] ?? 'Unassigned'); ?></span>
+                                            <span class="role-text" style="display:block; font-size:0.85rem; color:var(--text-muted);"><?php echo htmlspecialchars($row['role_name'] ?? 'No Role'); ?></span>
                                         </div>
                                     </td>
                                     <td>
-                                        <div class="shift-info">
-                                            <strong><?php echo htmlspecialchars($row['shift_name'] ?? 'No Shift'); ?></strong>
-                                            <?php if($row['start_time']): ?>
-                                                <span class="shift-times">
-                                                    <?php echo date('h:i A', strtotime($row['start_time'])) . ' - ' . date('h:i A', strtotime($row['end_time'])); ?>
-                                                </span>
-                                            <?php endif; ?>
+                                        <div class="schedule-summary-badges">
+                                            <?php 
+                                            $short_days = ['Monday'=>'M', 'Tuesday'=>'T', 'Wednesday'=>'W', 'Thursday'=>'Th', 'Friday'=>'F', 'Saturday'=>'S', 'Sunday'=>'Su'];
+                                            foreach($days_of_week as $day) {
+                                                $sch = isset($schedules[$row['user_id']][$day]) ? $schedules[$row['user_id']][$day] : null;
+                                                $is_active = ($sch && $sch['is_active'] == 1);
+                                                $class = $is_active ? 'active-day' : 'inactive-day';
+                                                
+                                                if ($is_active) {
+                                                    $m_in = $sch['morning_in'] ? date('h:i A', strtotime($sch['morning_in'])) : '--:--';
+                                                    $m_out = $sch['morning_out'] ? date('h:i A', strtotime($sch['morning_out'])) : '--:--';
+                                                    $a_in = $sch['afternoon_in'] ? date('h:i A', strtotime($sch['afternoon_in'])) : '--:--';
+                                                    $a_out = $sch['afternoon_out'] ? date('h:i A', strtotime($sch['afternoon_out'])) : '--:--';
+                                                    $title = "$day\\nAM: $m_in - $m_out\\nPM: $a_in - $a_out";
+                                                } else {
+                                                    $title = "$day: Off";
+                                                }
+                                                
+                                                echo "<span class='day-badge $class' title='$title'>" . $short_days[$day] . "</span>";
+                                            }
+                                            ?>
                                         </div>
                                     </td>
                                     <td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td>
                                     <td>
-                                        <div class="action-buttons">
-                                            <button class="btn-icon" title="Reset Password"><i class="ph ph-key"></i></button>
+                                        <div class="action-buttons" style="display:flex; gap:0.5rem;">
                                             <button class="btn-icon" title="Edit Profile"><i class="ph ph-pencil-simple"></i></button>
-                                            <button class="btn-icon text-danger" title="Deactivate"><i class="ph ph-user-minus"></i></button>
+                                            
+                                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to deactivate this employee? This action cannot be undone.');">
+                                                <input type="hidden" name="delete_user_id" value="<?php echo $row['user_id']; ?>">
+                                                <button type="submit" class="btn-icon" title="Deactivate/Delete" style="color: #e53e3e;"><i class="ph ph-user-minus"></i></button>
+                                            </form>
                                         </div>
                                     </td>
                                 </tr>
@@ -188,7 +292,7 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                             <tr>
                                 <td colspan="5" class="empty-state">
                                     <i class="ph ph-users"></i>
-                                    <p>No employees found in the database.</p>
+                                    <p>No employees found matching your criteria.</p>
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -205,46 +309,68 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
                 <button class="close-modal" id="closeAddModalBtn"><i class="ph ph-x"></i></button>
             </div>
             <form method="POST" action="hremployees.php">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>First Name</label>
-                        <input type="text" name="first_name" required placeholder="e.g. Jane">
+                <div class="form-grid" style="padding: 1.5rem; display: grid; gap: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group" style="margin:0;">
+                            <label>First Name</label>
+                            <input type="text" name="first_name" required placeholder="e.g. Jane">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label>Last Name</label>
+                            <input type="text" name="last_name" required placeholder="e.g. Doe">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Last Name</label>
-                        <input type="text" name="last_name" required placeholder="e.g. Doe">
-                    </div>
-                    <div class="form-group full-width">
+                    
+                    <div class="form-group" style="margin:0;">
                         <label>Email Address</label>
                         <input type="email" name="email" required placeholder="jane.doe@company.com">
                     </div>
                     
-                    <div class="form-group">
+                    <div class="form-group" style="margin:0;">
                         <label>Department</label>
-                        <select name="department_id" required>
+                        <select name="department_id" class="filter-dropdown" style="width: 100%;" required>
                             <option value="">Select Department</option>
-                            <?php while($dept = $departments->fetch_assoc()): ?>
+                            <?php foreach($departments as $dept): ?>
                                 <option value="<?php echo $dept['department_id']; ?>"><?php echo htmlspecialchars($dept['department_name']); ?></option>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Work Shift</label>
-                        <select name="shift_id" required>
-                            <option value="">Select Shift</option>
-                            <?php while($shift = $shifts->fetch_assoc()): ?>
-                                <option value="<?php echo $shift['shift_id']; ?>">
-                                    <?php echo htmlspecialchars($shift['shift_name']) . " (" . date('h:i A', strtotime($shift['start_time'])) . " - " . date('h:i A', strtotime($shift['end_time'])) . ")"; ?>
-                                </option>
-                            <?php endwhile; ?>
+                    
+                    <div class="form-group" style="margin:0;">
+                        <label>System Role</label>
+                        <select name="role_id" class="filter-dropdown" style="width: 100%;" required>
+                            <option value="">Select Role</option>
+                            <?php if($roles && $roles->num_rows > 0): while($role = $roles->fetch_assoc()): ?>
+                                <option value="<?php echo $role['role_id']; ?>"><?php echo htmlspecialchars($role['role_name']); ?></option>
+                            <?php endwhile; endif; ?>
                         </select>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="padding: 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 1rem;">
                     <button type="button" class="btn-secondary" id="cancelAddModalBtn">Cancel</button>
-                    <button type="submit" name="add_employee" class="btn-primary">Create Account</button>
+                    <button type="submit" name="add_employee" class="btn-primary" style="width: auto;">Create Account</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="deptModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Filter by Department</h2>
+                <button type="button" class="close-modal" onclick="closeDeptModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="dept-list">
+                <div class="dept-item <?php echo ($filter_dept_id === '') ? 'selected' : ''; ?>" onclick="selectDept('', 'All Departments')">
+                    All Departments
+                </div>
+                <?php foreach($departments as $dept): ?>
+                    <div class="dept-item <?php echo ($filter_dept_id == $dept['department_id']) ? 'selected' : ''; ?>" 
+                         onclick="selectDept('<?php echo $dept['department_id']; ?>', '<?php echo htmlspecialchars(addslashes($dept['department_name'])); ?>')">
+                        <?php echo htmlspecialchars($dept['department_name']); ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
 
@@ -255,32 +381,32 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY shift_name ASC");
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-        function toggleMenu() {
-            sidebar.classList.toggle('active');
-            sidebarOverlay.classList.toggle('active');
-        }
-
+        function toggleMenu() { sidebar.classList.toggle('active'); sidebarOverlay.classList.toggle('active'); }
         menuToggle.addEventListener('click', toggleMenu);
         closeSidebar.addEventListener('click', toggleMenu);
         sidebarOverlay.addEventListener('click', toggleMenu);
 
-        // Modal Logic
+        // Add Employee Modal Logic
         const addModal = document.getElementById('addEmployeeModal');
-        const openModalBtn = document.getElementById('openAddModalBtn');
-        const closeAddModalBtn = document.getElementById('closeAddModalBtn');
-        const cancelAddModalBtn = document.getElementById('cancelAddModalBtn');
+        document.getElementById('openAddModalBtn').addEventListener('click', () => addModal.classList.add('active'));
+        document.getElementById('closeAddModalBtn').addEventListener('click', () => addModal.classList.remove('active'));
+        document.getElementById('cancelAddModalBtn').addEventListener('click', () => addModal.classList.remove('active'));
+        addModal.addEventListener('click', (e) => { if (e.target === addModal) addModal.classList.remove('active'); });
 
-        function openModal() { addModal.classList.add('active'); }
-        function closeModal() { addModal.classList.remove('active'); }
-
-        openModalBtn.addEventListener('click', openModal);
-        closeAddModalBtn.addEventListener('click', closeModal);
-        cancelAddModalBtn.addEventListener('click', closeModal);
-
-        // Close modal if clicking outside the white box
-        addModal.addEventListener('click', (e) => {
-            if (e.target === addModal) closeModal();
-        });
+        // Department Filter Modal Logic
+        const deptModal = document.getElementById('deptModal');
+        function openDeptModal() { deptModal.classList.add('active'); }
+        function closeDeptModal() { deptModal.classList.remove('active'); }
+        
+        function selectDept(id, name) {
+            document.getElementById('filter_dept_id').value = id;
+            document.getElementById('filter_dept_text').innerText = name;
+            closeDeptModal();
+            // Automatically submit the form to apply the filter
+            document.getElementById('filterForm').submit();
+        }
+        
+        deptModal.addEventListener('click', (e) => { if (e.target === deptModal) closeDeptModal(); });
     </script>
 </body>
 </html>

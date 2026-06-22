@@ -9,6 +9,7 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
 
 require_once '../../includes/db_connect.php';
 $hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "Kevin";
+$days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // ==========================================================
 // HANDLE FORM SUBMISSIONS
@@ -19,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Add Department
     if (isset($_POST['add_dept'])) {
         $dept_name = trim($_POST['department_name']);
-        // Using IGNORE to prevent fatal errors if it already exists (since it's UNIQUE in DB)
         $stmt = $conn->prepare("INSERT IGNORE INTO departments (department_name) VALUES (?)");
         $stmt->bind_param("s", $dept_name);
         $stmt->execute();
@@ -28,27 +28,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     }
     
-    // Add Shift
-    if (isset($_POST['add_shift'])) {
-        $shift_name = trim($_POST['shift_name']);
-        $start_time = $_POST['start_time'];
-        $end_time = $_POST['end_time'];
-        $stmt = $conn->prepare("INSERT INTO shifts (shift_name, start_time, end_time) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $shift_name, $start_time, $end_time);
-        if($stmt->execute()) $message = "Shift added successfully.";
+    // Apply Global Schedule to ALL Users
+    if (isset($_POST['apply_global_schedule'])) {
+        $users_res = $conn->query("SELECT user_id FROM users");
+        
+        $stmt = $conn->prepare("INSERT INTO employee_schedules (user_id, day_of_week, is_active, morning_in, morning_out, afternoon_in, afternoon_out) 
+            VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE 
+            is_active=VALUES(is_active), morning_in=VALUES(morning_in), morning_out=VALUES(morning_out), afternoon_in=VALUES(afternoon_in), afternoon_out=VALUES(afternoon_out)");
+            
+        while($u = $users_res->fetch_assoc()) {
+            $emp_id = $u['user_id'];
+            foreach ($days_of_week as $day) {
+                $is_active = isset($_POST['active_'.$day]) ? 1 : 0;
+                $m_in = !empty($_POST['morning_in_'.$day]) ? $_POST['morning_in_'.$day] : NULL;
+                $m_out = !empty($_POST['morning_out_'.$day]) ? $_POST['morning_out_'.$day] : NULL;
+                $a_in = !empty($_POST['afternoon_in_'.$day]) ? $_POST['afternoon_in_'.$day] : NULL;
+                $a_out = !empty($_POST['afternoon_out_'.$day]) ? $_POST['afternoon_out_'.$day] : NULL;
+                
+                $stmt->bind_param("isissss", $emp_id, $day, $is_active, $m_in, $m_out, $a_in, $a_out);
+                $stmt->execute();
+            }
+        }
         $stmt->close();
+        $message = "Global weekly schedule applied to all employees.";
     }
 
-    // Redirect to prevent form resubmission
-    header("Location: hrsettings.php?msg=" . urlencode($message));
-    exit();
+    // Save Individual Schedule
+    if (isset($_POST['save_individual_schedule'])) {
+        $emp_id = intval($_POST['target_employee_id']);
+        
+        $stmt = $conn->prepare("INSERT INTO employee_schedules (user_id, day_of_week, is_active, morning_in, morning_out, afternoon_in, afternoon_out) 
+            VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE 
+            is_active=VALUES(is_active), morning_in=VALUES(morning_in), morning_out=VALUES(morning_out), afternoon_in=VALUES(afternoon_in), afternoon_out=VALUES(afternoon_out)");
+            
+        foreach ($days_of_week as $day) {
+            $is_active = isset($_POST['ind_active_'.$day]) ? 1 : 0;
+            $m_in = !empty($_POST['ind_morning_in_'.$day]) ? $_POST['ind_morning_in_'.$day] : NULL;
+            $m_out = !empty($_POST['ind_morning_out_'.$day]) ? $_POST['ind_morning_out_'.$day] : NULL;
+            $a_in = !empty($_POST['ind_afternoon_in_'.$day]) ? $_POST['ind_afternoon_in_'.$day] : NULL;
+            $a_out = !empty($_POST['ind_afternoon_out_'.$day]) ? $_POST['ind_afternoon_out_'.$day] : NULL;
+            
+            $stmt->bind_param("isissss", $emp_id, $day, $is_active, $m_in, $m_out, $a_in, $a_out);
+            $stmt->execute();
+        }
+        $stmt->close();
+        $message = "Custom schedule saved for employee.";
+    }
+
+    // Redirect to prevent form resubmission popup
+    if(!empty($message)){
+        header("Location: hrsettings.php?msg=" . urlencode($message));
+        exit();
+    }
 }
 
 // ==========================================================
 // FETCH EXISTING DATA
 // ==========================================================
 $departments = $conn->query("SELECT * FROM departments ORDER BY department_name ASC");
-$shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
+
+// Fetch users
+$users_query = "
+    SELECT u.user_id, u.first_name, u.last_name, u.email, d.department_name 
+    FROM users u 
+    LEFT JOIN departments d ON u.department_id = d.department_id 
+    ORDER BY u.first_name ASC
+";
+$users_result = $conn->query($users_query);
+
+// Fetch all saved schedules and organize them by user_id
+$schedules = [];
+$sched_res = $conn->query("SELECT * FROM employee_schedules");
+if ($sched_res) {
+    while($row = $sched_res->fetch_assoc()) {
+        $schedules[$row['user_id']][$row['day_of_week']] = $row;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -73,19 +128,13 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
     </header>
 
     <div class="main-wrapper">
-        
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
         <aside class="sidebar" id="sidebar">
-            <button class="close-sidebar" id="closeSidebar" aria-label="Close Sidebar">
-                <i class="ph ph-x"></i>
-            </button>
-
+            <button class="close-sidebar" id="closeSidebar" aria-label="Close Sidebar"><i class="ph ph-x"></i></button>
             <div class="sidebar-brand desktop-brand">
                 <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
                 <span class="brand-text">FlowTime</span>
             </div>
-
             <div class="sidebar-menu-wrapper">
                 <ul class="sidebar-links">
                     <li><a href="hrdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
@@ -100,18 +149,16 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
         <main class="content">
             <header class="page-header">
                 <h1>System Configuration</h1>
-                <p class="subtitle">Manage departments, shifts, and organizational rules.</p>
+                <p class="subtitle">Manage departments and university-wide work schedules.</p>
             </header>
 
             <?php if(isset($_GET['msg']) && !empty($_GET['msg'])): ?>
-                <div class="alert alert-success">
-                    <i class="ph ph-check-circle"></i> <?php echo htmlspecialchars($_GET['msg']); ?>
-                </div>
+                <div class="alert alert-success"><i class="ph ph-check-circle"></i> <?php echo htmlspecialchars($_GET['msg']); ?></div>
             <?php endif; ?>
 
             <div class="tab-navigation">
                 <button class="tab-btn active" onclick="switchTab('departments', event)">Departments</button>
-                <button class="tab-btn" onclick="switchTab('shifts', event)">Work Shifts</button>
+                <button class="tab-btn" onclick="switchTab('schedules', event)">Work Schedules</button>
             </div>
 
             <section id="tab-departments" class="tab-content active">
@@ -119,11 +166,9 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
                     <div class="settings-card data-card">
                         <h3>Current Departments</h3>
                         <table class="data-table">
-                            <thead>
-                                <tr><th>ID</th><th>Department Name</th></tr>
-                            </thead>
+                            <thead><tr><th>ID</th><th>Department Name</th></tr></thead>
                             <tbody>
-                                <?php if($departments->num_rows > 0): while($row = $departments->fetch_assoc()): ?>
+                                <?php if($departments && $departments->num_rows > 0): while($row = $departments->fetch_assoc()): ?>
                                     <tr>
                                         <td>#<?php echo $row['department_id']; ?></td>
                                         <td class="fw-500"><?php echo htmlspecialchars($row['department_name']); ?></td>
@@ -148,50 +193,149 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
                 </div>
             </section>
 
-            <section id="tab-shifts" class="tab-content">
-                <div class="settings-grid">
+            <section id="tab-schedules" class="tab-content">
+                <div class="settings-grid schedule-layout">
+                    
+                    <div class="settings-card form-card">
+                        <h3>University Base Schedule</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Define the default AM/PM working hours for the week and apply to all staff.</p>
+                        
+                        <form method="POST">
+                            <div class="weekly-schedule-grid">
+                                <?php foreach($days_of_week as $day): ?>
+                                    <div class="day-row">
+                                        <div class="day-label" style="margin-top: 0.4rem;">
+                                            <input type="checkbox" name="active_<?php echo $day; ?>" checked>
+                                            <span><?php echo $day; ?></span>
+                                        </div>
+                                        <div class="time-inputs-group">
+                                            <div class="time-row">
+                                                <span class="time-label">AM</span>
+                                                <input type="time" name="morning_in_<?php echo $day; ?>" value="08:00">
+                                                <span>to</span>
+                                                <input type="time" name="morning_out_<?php echo $day; ?>" value="12:00">
+                                            </div>
+                                            <div class="time-row">
+                                                <span class="time-label">PM</span>
+                                                <input type="time" name="afternoon_in_<?php echo $day; ?>" value="13:00">
+                                                <span>to</span>
+                                                <input type="time" name="afternoon_out_<?php echo $day; ?>" value="17:00">
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <button type="submit" name="apply_global_schedule" class="btn-primary" style="margin-top: 1.5rem; width: 100%;">Apply Schedule to All</button>
+                        </form>
+                    </div>
+
                     <div class="settings-card data-card">
-                        <h3>Configured Shifts</h3>
+                        <h3>Employee Schedules</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">View and set custom AM/PM schedules for individual employees.</p>
+                        
                         <table class="data-table">
                             <thead>
-                                <tr><th>Shift Name</th><th>Start Time</th><th>End Time</th></tr>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Current Schedule</th>
+                                    <th>Action</th>
+                                </tr>
                             </thead>
                             <tbody>
-                                <?php if($shifts->num_rows > 0): while($row = $shifts->fetch_assoc()): ?>
+                                <?php if($users_result && $users_result->num_rows > 0): while($u = $users_result->fetch_assoc()): ?>
                                     <tr>
-                                        <td class="fw-500"><?php echo htmlspecialchars($row['shift_name']); ?></td>
-                                        <td><span class="time-badge"><?php echo date('h:i A', strtotime($row['start_time'])); ?></span></td>
-                                        <td><span class="time-badge"><?php echo date('h:i A', strtotime($row['end_time'])); ?></span></td>
+                                        <td>
+                                            <div class="emp-profile">
+                                                <div class="avatar-sm"><?php echo strtoupper(substr($u['first_name'], 0, 1) . substr($u['last_name'], 0, 1)); ?></div>
+                                                <div class="emp-info">
+                                                    <span class="emp-name"><?php echo htmlspecialchars($u['first_name'] . ' ' . $u['last_name']); ?></span>
+                                                    <span style="display:block; font-size: 0.75rem; color: var(--text-muted);"><?php echo htmlspecialchars($u['department_name'] ?? 'Unassigned'); ?></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="schedule-summary-badges">
+                                                <?php 
+                                                $short_days = ['Monday'=>'M', 'Tuesday'=>'T', 'Wednesday'=>'W', 'Thursday'=>'Th', 'Friday'=>'F', 'Saturday'=>'S', 'Sunday'=>'Su'];
+                                                foreach($days_of_week as $day) {
+                                                    $sch = isset($schedules[$u['user_id']][$day]) ? $schedules[$u['user_id']][$day] : null;
+                                                    $is_active = ($sch && $sch['is_active'] == 1);
+                                                    $class = $is_active ? 'active-day' : 'inactive-day';
+                                                    
+                                                    if ($is_active) {
+                                                        $m_in = $sch['morning_in'] ? date('h:i A', strtotime($sch['morning_in'])) : '--:--';
+                                                        $m_out = $sch['morning_out'] ? date('h:i A', strtotime($sch['morning_out'])) : '--:--';
+                                                        $a_in = $sch['afternoon_in'] ? date('h:i A', strtotime($sch['afternoon_in'])) : '--:--';
+                                                        $a_out = $sch['afternoon_out'] ? date('h:i A', strtotime($sch['afternoon_out'])) : '--:--';
+                                                        $title = "$day\\nAM: $m_in - $m_out\\nPM: $a_in - $a_out";
+                                                    } else {
+                                                        $title = "$day: Off";
+                                                    }
+                                                    
+                                                    echo "<span class='day-badge $class' title='$title'>" . $short_days[$day] . "</span>";
+                                                }
+                                                ?>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <button class="btn-secondary btn-sm" onclick="openScheduleModal(<?php echo $u['user_id']; ?>, '<?php echo htmlspecialchars(addslashes($u['first_name'] . ' ' . $u['last_name'])); ?>')">
+                                                Edit Schedule
+                                            </button>
+                                        </td>
                                     </tr>
                                 <?php endwhile; else: ?>
-                                    <tr><td colspan="3" class="empty-state">No shifts configured.</td></tr>
+                                    <tr><td colspan="3" class="empty-state">No employees found.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
                     </div>
-                    
-                    <div class="settings-card form-card">
-                        <h3>Add Work Shift</h3>
-                        <form method="POST">
-                            <div class="form-group">
-                                <label>Shift Name</label>
-                                <input type="text" name="shift_name" required placeholder="e.g. Morning Shift">
-                            </div>
-                            <div class="form-group">
-                                <label>Start Time</label>
-                                <input type="time" name="start_time" required>
-                            </div>
-                            <div class="form-group">
-                                <label>End Time</label>
-                                <input type="time" name="end_time" required>
-                            </div>
-                            <button type="submit" name="add_shift" class="btn-primary">Save Shift</button>
-                        </form>
-                    </div>
+
                 </div>
             </section>
 
         </main>
+    </div>
+
+    <div class="modal-overlay" id="scheduleModal">
+        <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header">
+                <h2>Set Schedule: <span id="modalEmpName" style="color: var(--primary-color);"></span></h2>
+                <button type="button" class="close-modal" onclick="closeScheduleModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <form method="POST" style="padding: 1.5rem; max-height: 70vh; overflow-y: auto;">
+                <input type="hidden" name="target_employee_id" id="target_employee_id">
+                
+                <div class="weekly-schedule-grid">
+                    <?php foreach($days_of_week as $day): ?>
+                        <div class="day-row">
+                            <div class="day-label" style="margin-top: 0.4rem;">
+                                <input type="checkbox" name="ind_active_<?php echo $day; ?>" id="chk_<?php echo $day; ?>" checked>
+                                <span><?php echo $day; ?></span>
+                            </div>
+                            <div class="time-inputs-group">
+                                <div class="time-row">
+                                    <span class="time-label">AM</span>
+                                    <input type="time" name="ind_morning_in_<?php echo $day; ?>" id="min_<?php echo $day; ?>">
+                                    <span>to</span>
+                                    <input type="time" name="ind_morning_out_<?php echo $day; ?>" id="mout_<?php echo $day; ?>">
+                                </div>
+                                <div class="time-row">
+                                    <span class="time-label">PM</span>
+                                    <input type="time" name="ind_afternoon_in_<?php echo $day; ?>" id="ain_<?php echo $day; ?>">
+                                    <span>to</span>
+                                    <input type="time" name="ind_afternoon_out_<?php echo $day; ?>" id="aout_<?php echo $day; ?>">
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="modal-footer" style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+                    <button type="button" class="btn-secondary" onclick="closeScheduleModal()" style="flex: 1;">Cancel</button>
+                    <button type="submit" name="save_individual_schedule" class="btn-primary" style="flex: 1;">Save Custom Schedule</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -201,11 +345,7 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-        function toggleMenu() {
-            sidebar.classList.toggle('active');
-            sidebarOverlay.classList.toggle('active');
-        }
-
+        function toggleMenu() { sidebar.classList.toggle('active'); sidebarOverlay.classList.toggle('active'); }
         menuToggle.addEventListener('click', toggleMenu);
         closeSidebar.addEventListener('click', toggleMenu);
         sidebarOverlay.addEventListener('click', toggleMenu);
@@ -214,10 +354,50 @@ $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
         function switchTab(tabId, event) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-
             document.getElementById('tab-' + tabId).classList.add('active');
             if(event) event.target.classList.add('active');
         }
+
+        // Modal Logic & Pre-population
+        const scheduleModal = document.getElementById('scheduleModal');
+        const modalEmpName = document.getElementById('modalEmpName');
+        const userSchedules = <?php echo json_encode($schedules); ?>;
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+        function openScheduleModal(employeeId, employeeName) {
+            document.getElementById('target_employee_id').value = employeeId;
+            modalEmpName.innerText = employeeName;
+            
+            // Check if user has schedules in DB, if not use defaults
+            const sched = userSchedules[employeeId];
+            
+            days.forEach(day => {
+                const activeCb = document.getElementById('chk_' + day);
+                const min = document.getElementById('min_' + day);
+                const mout = document.getElementById('mout_' + day);
+                const ain = document.getElementById('ain_' + day);
+                const aout = document.getElementById('aout_' + day);
+                
+                if (sched && sched[day]) {
+                    // Pre-fill with DB Data
+                    activeCb.checked = (sched[day].is_active == 1);
+                    min.value = sched[day].morning_in ? sched[day].morning_in.substring(0,5) : '';
+                    mout.value = sched[day].morning_out ? sched[day].morning_out.substring(0,5) : '';
+                    ain.value = sched[day].afternoon_in ? sched[day].afternoon_in.substring(0,5) : '';
+                    aout.value = sched[day].afternoon_out ? sched[day].afternoon_out.substring(0,5) : '';
+                } else {
+                    // Default values if they have never had a schedule saved
+                    activeCb.checked = (day !== 'Saturday' && day !== 'Sunday');
+                    min.value = '08:00'; mout.value = '12:00';
+                    ain.value = '13:00'; aout.value = '17:00';
+                }
+            });
+
+            scheduleModal.classList.add('active');
+        }
+
+        function closeScheduleModal() { scheduleModal.classList.remove('active'); }
+        scheduleModal.addEventListener('click', (e) => { if (e.target === scheduleModal) closeScheduleModal(); });
     </script>
 </body>
 </html>

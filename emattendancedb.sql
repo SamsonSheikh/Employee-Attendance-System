@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jun 22, 2026 at 06:47 PM
+-- Generation Time: Jun 22, 2026 at 09:00 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -59,6 +59,36 @@ INSERT INTO `departments` (`department_id`, `department_name`) VALUES
 (1, 'Human Resources'),
 (2, 'Information Technology'),
 (4, 'Sales & Marketing');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `employee_schedules`
+--
+
+CREATE TABLE `employee_schedules` (
+  `schedule_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `day_of_week` enum('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday') NOT NULL,
+  `is_active` tinyint(1) DEFAULT 1 COMMENT '1 = Workday, 0 = Day Off',
+  `morning_in` time DEFAULT NULL,
+  `morning_out` time DEFAULT NULL,
+  `afternoon_in` time DEFAULT NULL,
+  `afternoon_out` time DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `employee_schedules`
+--
+
+INSERT INTO `employee_schedules` (`schedule_id`, `user_id`, `day_of_week`, `is_active`, `morning_in`, `morning_out`, `afternoon_in`, `afternoon_out`) VALUES
+(1, 12, 'Monday', 1, '06:00:00', '11:00:00', '13:00:00', '17:00:00'),
+(2, 12, 'Tuesday', 1, '08:00:00', '12:00:00', '13:00:00', '17:00:00'),
+(3, 12, 'Wednesday', 1, '08:00:00', '12:00:00', '13:00:00', '17:00:00'),
+(4, 12, 'Thursday', 1, '08:00:00', '12:00:00', '13:00:00', '17:00:00'),
+(5, 12, 'Friday', 0, '08:00:00', '12:00:00', '13:00:00', '17:00:00'),
+(6, 12, 'Saturday', 0, '08:00:00', '12:00:00', '13:00:00', '17:00:00'),
+(7, 12, 'Sunday', 0, '08:00:00', '12:00:00', '13:00:00', '17:00:00');
 
 -- --------------------------------------------------------
 
@@ -150,6 +180,13 @@ ALTER TABLE `departments`
   ADD UNIQUE KEY `department_name` (`department_name`);
 
 --
+-- Indexes for table `employee_schedules`
+--
+ALTER TABLE `employee_schedules`
+  ADD PRIMARY KEY (`schedule_id`),
+  ADD UNIQUE KEY `unique_user_day` (`user_id`,`day_of_week`);
+
+--
 -- Indexes for table `roles`
 --
 ALTER TABLE `roles`
@@ -190,6 +227,12 @@ ALTER TABLE `departments`
   MODIFY `department_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
+-- AUTO_INCREMENT for table `employee_schedules`
+--
+ALTER TABLE `employee_schedules`
+  MODIFY `schedule_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+
+--
 -- AUTO_INCREMENT for table `roles`
 --
 ALTER TABLE `roles`
@@ -216,6 +259,12 @@ ALTER TABLE `users`
 --
 ALTER TABLE `attendance_logs`
   ADD CONSTRAINT `attendance_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `employee_schedules`
+--
+ALTER TABLE `employee_schedules`
+  ADD CONSTRAINT `fk_schedule_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `users`

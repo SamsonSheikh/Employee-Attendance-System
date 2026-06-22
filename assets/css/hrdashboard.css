@@ -10,7 +10,7 @@
     /* Chart Colors */
     --color-present: #f26b4d; /* Orange */
     --color-absent: #48bb78;  /* Green */
-    --color-leave: #f6ad55;   /* Yellow */
+    --color-holiday: #4299e1; /* Blue */
 }
 
 * {
@@ -282,7 +282,7 @@ body {
     color: var(--text-muted);
 }
 
-/* --- Data Grid (Chart & Holidays) --- */
+/* --- Data Grid (Calendar & Holidays) --- */
 .data-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -295,6 +295,7 @@ body {
     padding: 1.5rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
     border: 1px solid var(--border-color);
+    min-width: 0;
 }
 
 .card-header {
@@ -309,35 +310,12 @@ body {
     font-weight: 600;
 }
 
-/* --- Chart Layout --- */
-.chart-filters {
-    display: flex;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.chart-filters button {
-    padding: 0.4rem 1rem;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
-
-.chart-filters button.active {
-    background-color: var(--primary-color);
-    color: white;
-}
-
 .chart-legend {
     display: flex;
     flex-wrap: wrap;
     gap: 1.5rem;
     font-size: 0.85rem;
     color: var(--text-muted);
-    margin-bottom: 2rem;
 }
 
 .legend-item {
@@ -354,69 +332,112 @@ body {
 }
 .dot.present { background-color: var(--color-present); }
 .dot.absent { background-color: var(--color-absent); }
-.dot.leave { background-color: var(--color-leave); }
+.dot.holiday { background-color: var(--color-holiday); }
 
-/* Mock CSS Bar Chart - UPDATED FOR SCROLLING */
-.mock-chart {
-    height: 250px;
+/* =========================================
+   NEW CALENDAR STYLES
+   ========================================= */
+.calendar-controls {
     display: flex;
-    align-items: flex-end;
-    padding-bottom: 30px; /* Space for date labels */
-    border-bottom: 1px dashed var(--border-color);
-    position: relative;
-    justify-content: flex-start; /* Aligns items to the left so they scroll right */
-    overflow-x: auto; /* Enables horizontal scrolling */
-    overflow-y: hidden;
-    gap: 15px; /* Spacing between days */
-    scroll-behavior: smooth;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0 0.5rem;
 }
 
-/* Custom scrollbar styling for the chart */
-.mock-chart::-webkit-scrollbar {
-    height: 6px;
-}
-.mock-chart::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 4px;
-}
-.mock-chart::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
-}
-.mock-chart::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+.calendar-controls h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-main);
 }
 
-.chart-group {
-    display: flex;
-    gap: 3px; /* Tighter gap between the actual Present/Absent/Leave bars */
-    height: 100%;
-    align-items: flex-end;
-    position: relative;
-    flex: 0 0 auto; /* Locks the width so elements don't squish */
-    min-width: 45px; /* Ensures minimum readable width */
-    justify-content: center;
-}
-
-.bar {
-    width: 15px;
-    border-radius: 2px 2px 0 0;
-    transition: height 0.3s ease; /* Smooth animation when height changes */
-}
-
-.bar.present { background-color: var(--color-present); }
-.bar.absent { background-color: var(--color-absent); }
-.bar.leave { background-color: var(--color-leave); }
-
-.chart-group .label {
-    position: absolute;
-    bottom: -25px; /* Position below the dashed border */
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.75rem;
+.calendar-controls button {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
     color: var(--text-muted);
-    white-space: nowrap;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
 }
+
+.calendar-controls button:hover {
+    background: #edf2f7;
+    color: var(--text-main);
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background-color: var(--border-color);
+    gap: 1px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cal-header {
+    background: #f8fafc;
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.cal-cell {
+    background: var(--bg-card);
+    min-height: 90px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.cal-cell.blank {
+    background: #fbfbfc;
+}
+
+.cal-day-num {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    align-self: flex-end;
+}
+
+.cal-day-num.today-num {
+    background-color: var(--primary-color);
+    color: white;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.cal-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 6px;
+    border-radius: 4px;
+    color: white;
+    text-align: left;
+}
+
+.stat-badge.present { background-color: #fff5f2; color: var(--color-present); border: 1px solid #fed7d7; }
+.stat-badge.absent { background-color: #f0fff4; color: var(--color-absent); border: 1px solid #c6f6d5; }
 
 /* --- Holidays List --- */
 .holiday-list {
@@ -502,12 +523,19 @@ body {
         gap: 1rem;
     }
 
-    /* Mobile Chart Adjustments */
-    .chart-group {
-        min-width: 30px; /* Allow groups to be slightly smaller on phones */
+    /* Calendar Mobile Adjustments */
+    .cal-cell {
+        min-height: 60px;
+        padding: 0.3rem;
     }
-    .bar {
-        width: 8px !important; /* Slimmer bars for mobile */
+    .stat-badge {
+        font-size: 0.6rem;
+        padding: 2px 4px;
+        text-align: center;
+    }
+    .cal-header {
+        font-size: 0.7rem;
+        padding: 0.5rem 0.2rem;
     }
 }
 

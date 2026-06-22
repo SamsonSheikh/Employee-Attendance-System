@@ -39,17 +39,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     }
 
-    // Add Leave Type
-    if (isset($_POST['add_leave'])) {
-        $leave_name = trim($_POST['leave_name']);
-        $stmt = $conn->prepare("INSERT IGNORE INTO leave_types (leave_name) VALUES (?)");
-        $stmt->bind_param("s", $leave_name);
-        $stmt->execute();
-        if($stmt->affected_rows > 0) $message = "Leave type added successfully.";
-        else $message = "Leave type already exists.";
-        $stmt->close();
-    }
-    
     // Redirect to prevent form resubmission
     header("Location: hrsettings.php?msg=" . urlencode($message));
     exit();
@@ -60,7 +49,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ==========================================================
 $departments = $conn->query("SELECT * FROM departments ORDER BY department_name ASC");
 $shifts = $conn->query("SELECT * FROM shifts ORDER BY start_time ASC");
-$leave_types = $conn->query("SELECT * FROM leave_types ORDER BY leave_name ASC");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -102,7 +90,6 @@ $leave_types = $conn->query("SELECT * FROM leave_types ORDER BY leave_name ASC")
                 <ul class="sidebar-links">
                     <li><a href="hrdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li><a href="hrattendance.php"><i class="ph ph-user-focus"></i> Attendance</a></li>
-                    <li><a href="hrleaveapprovals.php"><i class="ph ph-calendar-check"></i> Leave Approvals</a></li>
                     <li><a href="hremployees.php"><i class="ph ph-users"></i> Employees</a></li>
                     <li class="active"><a href="hrsettings.php"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
@@ -125,7 +112,6 @@ $leave_types = $conn->query("SELECT * FROM leave_types ORDER BY leave_name ASC")
             <div class="tab-navigation">
                 <button class="tab-btn active" onclick="switchTab('departments', event)">Departments</button>
                 <button class="tab-btn" onclick="switchTab('shifts', event)">Work Shifts</button>
-                <button class="tab-btn" onclick="switchTab('leaves', event)">Leave Types</button>
             </div>
 
             <section id="tab-departments" class="tab-content active">
@@ -200,40 +186,6 @@ $leave_types = $conn->query("SELECT * FROM leave_types ORDER BY leave_name ASC")
                                 <input type="time" name="end_time" required>
                             </div>
                             <button type="submit" name="add_shift" class="btn-primary">Save Shift</button>
-                        </form>
-                    </div>
-                </div>
-            </section>
-
-            <section id="tab-leaves" class="tab-content">
-                <div class="settings-grid">
-                    <div class="settings-card data-card">
-                        <h3>Approved Leave Categories</h3>
-                        <table class="data-table">
-                            <thead>
-                                <tr><th>ID</th><th>Leave Category</th></tr>
-                            </thead>
-                            <tbody>
-                                <?php if($leave_types->num_rows > 0): while($row = $leave_types->fetch_assoc()): ?>
-                                    <tr>
-                                        <td>#<?php echo $row['leave_type_id']; ?></td>
-                                        <td><span class="type-badge"><?php echo htmlspecialchars($row['leave_name']); ?></span></td>
-                                    </tr>
-                                <?php endwhile; else: ?>
-                                    <tr><td colspan="2" class="empty-state">No leave types configured.</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <div class="settings-card form-card">
-                        <h3>Add Leave Type</h3>
-                        <form method="POST">
-                            <div class="form-group">
-                                <label>Leave Category Name</label>
-                                <input type="text" name="leave_name" required placeholder="e.g. Sick Leave, Bereavement">
-                            </div>
-                            <button type="submit" name="add_leave" class="btn-primary">Save Leave Type</button>
                         </form>
                     </div>
                 </div>

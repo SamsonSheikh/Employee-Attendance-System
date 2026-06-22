@@ -24,7 +24,7 @@ $total_employees = $emp_query ? $emp_query->fetch_assoc()['total'] : 0;
 $safe_total_employees = max(1, $total_employees); 
 
 // Card 2: Present Today (From `attendance_logs` table for CURDATE)
-$present_query = $conn->query("SELECT COUNT(log_id) AS total FROM attendance_logs WHERE log_date = CURDATE() AND clock_in IS NOT NULL AND status != 'Absent'");
+$present_query = $conn->query("SELECT COUNT(log_id) AS total FROM attendance_logs WHERE log_date = CURDATE() AND morning_clock_in IS NOT NULL AND status != 'Absent'");
 $present_today = $present_query ? $present_query->fetch_assoc()['total'] : 0;
 
 // Card 3: Late Arrivals Today (From `attendance_logs` ENUM status)
@@ -51,7 +51,7 @@ for ($i = 29; $i >= 0; $i--) {
 // Fetch Present and Absent counts per day
 $att_query = "
     SELECT log_date, 
-           SUM(CASE WHEN clock_in IS NOT NULL AND status != 'Absent' THEN 1 ELSE 0 END) as present_count,
+           SUM(CASE WHEN morning_clock_in IS NOT NULL AND status != 'Absent' THEN 1 ELSE 0 END) as present_count,
            SUM(CASE WHEN status = 'Absent' THEN 1 ELSE 0 END) as absent_count
     FROM attendance_logs 
     WHERE log_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)

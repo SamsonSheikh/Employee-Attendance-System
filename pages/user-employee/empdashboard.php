@@ -17,7 +17,6 @@ $stmt_user_data->bind_param("i", $user_id);
 $stmt_user_data->execute();
 $user_data = $stmt_user_data->get_result()->fetch_assoc();
 $user_qr_identifier = $user_data['qr_identifier'] ?? '';
-require_once '../../includes/db_connect.php';
 
 $message = "";
 
@@ -25,64 +24,90 @@ $message = "";
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $date_today = date('Y-m-d');
     $time_now = date('Y-m-d H:i:s');
+    
+    // Fetch the current log for today to decide action
+    $stmt_check = $conn->prepare("SELECT * FROM attendance_logs WHERE user_id = ? AND log_date = ?");
+    $stmt_check->bind_param("is", $user_id, $date_today);
+    $stmt_check->execute();
+    $today_log = $stmt_check->get_result()->fetch_assoc();
 
     if (isset($_POST['clock_in'])) {
-        $stmt = $conn->prepare("INSERT IGNORE INTO attendance_logs (user_id, log_date, clock_in, status) VALUES (?, ?, ?, 'On Time')");
-        $stmt->bind_param("iss", $user_id, $date_today, $time_now);
-        $stmt->execute();
-        
-        if ($stmt->affected_rows > 0) {
-            $message = "Clocked in successfully at " . date('h:i A');
-        } else {
-            $message = "You have already clocked in today.";
-        }
-    } elseif (isset($_POST['clock_out'])) {
-        // Check for clock-in record to apply restrictions
-        $stmt_check = $conn->prepare("SELECT clock_in FROM attendance_logs WHERE user_id = ? AND log_date = ? AND clock_out IS NULL");
-        $stmt_check->bind_param("is", $user_id, $date_today);
-        $stmt_check->execute();
-        $log_check = $stmt_check->get_result()->fetch_assoc();
-
-        if ($log_check) {
-            $clock_in_time = new DateTime($log_check['clock_in']);
-            $current_time = new DateTime($time_now);
-            $interval_seconds = $current_time->getTimestamp() - $clock_in_time->getTimestamp();
-
-            if ($interval_seconds < 60) { // Time out restriction: 1 minute
-                $message = "Clock-out restricted. You must be clocked in for at least 1 minute.";
-            } else {
-                $stmt_update = $conn->prepare("UPDATE attendance_logs SET clock_out = ? WHERE user_id = ? AND log_date = ? AND clock_out IS NULL");
-                $stmt_update->bind_param("sis", $time_now, $user_id, $date_today);
-                $stmt_update->execute();
-                if ($stmt_update->affected_rows > 0) {
-                    $message = "Clocked out successfully at " . date('h:i A');
-                }
+        if (!$today_log) {
+            // Morning Clock In: No record for today, so create one.
+            $stmt = $conn->prepare("INSERT INTO attendance_logs (user_id, log_date, morning_clock_in, status) VALUES (?, ?, ?, 'On Time')");
+            $stmt->bind_param("iss", $user_id, $date_today, $time_now);
+            if ($stmt->execute()) {
+                $message = "Morning clock-in successful at " . date('h:i A');
+            }
+        } elseif (!empty($today_log['morning_clock_out']) && empty($today_log['afternoon_clock_in'])) {
+            // Afternoon Clock In: Morning is done, now clocking in for afternoon.
+            $stmt = $conn->prepare("UPDATE attendance_logs SET afternoon_clock_in = ? WHERE log_id = ?");
+            $stmt->bind_param("si", $time_now, $today_log['log_id']);
+            if ($stmt->execute()) {
+                $message = "Afternoon clock-in successful at " . date('h:i A');
             }
         } else {
-            $message = "You haven't clocked in yet, or you already clocked out.";
+            $message = "Clock-in action is not available at this time.";
+        }
+    } elseif (isset($_POST['clock_out'])) {
+        if ($today_log) {
+            if (!empty($today_log['morning_clock_in']) && empty($today_log['morning_clock_out'])) {
+                // Morning Clock Out
+                $stmt = $conn->prepare("UPDATE attendance_logs SET morning_clock_out = ? WHERE log_id = ?");
+                $stmt->bind_param("si", $time_now, $today_log['log_id']);
+                if ($stmt->execute()) {
+                    $message = "Morning clock-out successful at " . date('h:i A');
+                }
+            } elseif (!empty($today_log['afternoon_clock_in']) && empty($today_log['afternoon_clock_out'])) {
+                // Afternoon Clock Out
+                $stmt = $conn->prepare("UPDATE attendance_logs SET afternoon_clock_out = ? WHERE log_id = ?");
+                $stmt->bind_param("si", $time_now, $today_log['log_id']);
+                if ($stmt->execute()) {
+                    $message = "Afternoon clock-out successful. Shift completed.";
+                }
+            } else {
+                $message = "Clock-out action is not available at this time.";
+            }
+        } else {
+            $message = "Cannot clock out without clocking in first.";
         }
     }
 }
 
 // Check Current Status
 $date_today = date('Y-m-d');
-$stmt = $conn->prepare("SELECT clock_in, clock_out FROM attendance_logs WHERE user_id = ? AND log_date = ?");
+$stmt = $conn->prepare("SELECT * FROM attendance_logs WHERE user_id = ? AND log_date = ?");
 $stmt->bind_param("is", $user_id, $date_today);
 $stmt->execute();
 $result = $stmt->get_result();
 $log = $result->fetch_assoc();
 
-$is_clocked_in = $log && !empty($log['clock_in']) && empty($log['clock_out']);
-$is_clocked_out = $log && !empty($log['clock_out']);
+$can_clock_in = false;
+$can_clock_out = false;
 
-if ($is_clocked_in) {
-    $status_text = 'Currently: CLOCKED IN';
-    $status_class = 'status-clocked-in';
-} elseif ($is_clocked_out) {
-    $status_text = 'Shift Completed (Clocked Out)';
-    $status_class = 'status-clocked-out';
-} else {
+if (!$log) {
+    // Not clocked in at all
     $status_text = 'Not Clocked In';
+    $status_class = 'status-clocked-out';
+    $can_clock_in = true;
+} elseif (empty($log['morning_clock_out'])) {
+    // Clocked in for the morning
+    $status_text = 'Currently: CLOCKED IN (Morning)';
+    $status_class = 'status-clocked-in';
+    $can_clock_out = true;
+} elseif (empty($log['afternoon_clock_in'])) {
+    // On lunch break
+    $status_text = 'On Lunch Break';
+    $status_class = 'status-clocked-out';
+    $can_clock_in = true;
+} elseif (empty($log['afternoon_clock_out'])) {
+    // Clocked in for the afternoon
+    $status_text = 'Currently: CLOCKED IN (Afternoon)';
+    $status_class = 'status-clocked-in';
+    $can_clock_out = true;
+} else {
+    // Day is complete
+    $status_text = 'Shift Completed for Today';
     $status_class = 'status-clocked-out';
 }
 
@@ -159,8 +184,8 @@ if ($is_clocked_in) {
             <div class="punch-clock">
                 <div class="status-indicator <?= $status_class; ?>"><?= $status_text; ?></div>
                 <form method="POST" id="clockForm">
-                    <button type="button" id="clockInBtn" class="btn-massive btn-clock-in" <?= ($is_clocked_in || $is_clocked_out) ? 'disabled' : ''; ?>>CLOCK IN</button>
-                    <button type="button" id="clockOutBtn" class="btn-massive btn-clock-out" <?= (!$is_clocked_in || $is_clocked_out) ? 'disabled' : ''; ?>>CLOCK OUT</button>
+                    <button type="button" id="clockInBtn" class="btn-massive btn-clock-in" <?= !$can_clock_in ? 'disabled' : ''; ?>>CLOCK IN</button>
+                    <button type="button" id="clockOutBtn" class="btn-massive btn-clock-out" <?= !$can_clock_out ? 'disabled' : ''; ?>>CLOCK OUT</button>
                 </form>
             </div>
 

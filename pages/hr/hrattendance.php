@@ -17,13 +17,13 @@ $hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "Kevin";
 // ==========================================================
 $query = "
     SELECT 
-        a.log_id, a.log_date, a.clock_in, a.clock_out, a.status,
+        a.log_id, a.log_date, a.morning_clock_in, a.morning_clock_out, a.afternoon_clock_in, a.afternoon_clock_out, a.status,
         u.first_name, u.last_name,
         d.department_name
     FROM attendance_logs a
     JOIN users u ON a.user_id = u.user_id
     LEFT JOIN departments d ON u.department_id = d.department_id
-    ORDER BY a.log_date DESC, a.clock_in DESC
+    ORDER BY a.log_date DESC, a.morning_clock_in DESC
     LIMIT 100
 ";
 $result = $conn->query($query);
@@ -115,8 +115,10 @@ $result = $conn->query($query);
                             <th>Employee</th>
                             <th>Department</th>
                             <th>Date</th>
-                            <th>Clock In</th>
-                            <th>Clock Out</th>
+                            <th>Morning In</th>
+                            <th>Morning Out</th>
+                            <th>Afternoon In</th>
+                            <th>Afternoon Out</th>
                             <th>Status</th>
                             <th>Action</th>
                         </tr>
@@ -133,10 +135,16 @@ $result = $conn->query($query);
                                     </td>
                                     <td><?php echo htmlspecialchars($row['department_name'] ?? 'N/A'); ?></td>
                                     <td><?php echo date('M d, Y', strtotime($row['log_date'])); ?></td>
-                                    <td><?php echo date('h:i A', strtotime($row['clock_in'])); ?></td>
                                     <td>
                                         <?php 
-                                            echo $row['clock_out'] ? date('h:i A', strtotime($row['clock_out'])) : '<span class="missing-punch">--:--</span>'; 
+                                            echo $row['morning_clock_in'] ? date('h:i A', strtotime($row['morning_clock_in'])) : '<span class="missing-punch">--:--</span>'; 
+                                        ?>
+                                    </td>
+                                    <td><?php echo $row['morning_clock_out'] ? date('h:i A', strtotime($row['morning_clock_out'])) : '<span class="missing-punch">--:--</span>'; ?></td>
+                                    <td><?php echo $row['afternoon_clock_in'] ? date('h:i A', strtotime($row['afternoon_clock_in'])) : '<span class="missing-punch">--:--</span>'; ?></td>
+                                    <td>
+                                        <?php 
+                                            echo $row['afternoon_clock_out'] ? date('h:i A', strtotime($row['afternoon_clock_out'])) : '<span class="missing-punch">--:--</span>'; 
                                         ?>
                                     </td>
                                     <td>
@@ -155,7 +163,7 @@ $result = $conn->query($query);
                             <?php endwhile; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="7" class="empty-state">
+                                <td colspan="9" class="empty-state">
                                     <i class="ph ph-folder-open"></i>
                                     <p>No attendance records found.</p>
                                 </td>

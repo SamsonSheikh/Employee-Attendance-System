@@ -31,10 +31,6 @@ $present_today = $present_query ? $present_query->fetch_assoc()['total'] : 0;
 $late_query = $conn->query("SELECT COUNT(log_id) AS total FROM attendance_logs WHERE log_date = CURDATE() AND status = 'Late'");
 $late_today = $late_query ? $late_query->fetch_assoc()['total'] : 0;
 
-// Card 4: Pending Leave Requests (From `leave_requests` ENUM status)
-$pending_query = $conn->query("SELECT COUNT(request_id) AS total FROM leave_requests WHERE approval_status = 'Pending'");
-$pending_leaves = $pending_query ? $pending_query->fetch_assoc()['total'] : 0;
-
 
 // ==========================================================
 // 5. FETCH DATA FOR THE ATTENDANCE CHART (Last 30 Days)
@@ -138,7 +134,6 @@ $chart_data_json = json_encode(array_values($chart_data));
                 <ul class="sidebar-links">
                     <li class="active"><a href="../../pages/hr/hrdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li><a href="../../pages/hr/hrattendance.php"><i class="ph ph-user-focus"></i> Attendance</a></li>
-                    <li><a href="../../pages/hr/hrleaveapprovals.php"><i class="ph ph-calendar-check"></i> Leave Approvals</a></li>
                     <li><a href="../../pages/hr/hremployees.php"><i class="ph ph-users"></i> Employees</a></li>
                     <li><a href="../../pages/hr/hrsettings.php"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
@@ -172,13 +167,6 @@ $chart_data_json = json_encode(array_values($chart_data));
                     <div class="stat-info">
                         <h3><?php echo htmlspecialchars($late_today); ?></h3>
                         <p>Late Arrivals</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon"><i class="ph ph-clipboard-text"></i></div>
-                    <div class="stat-info">
-                        <h3><?php echo htmlspecialchars($pending_leaves); ?></h3>
-                        <p>Pending Leaves</p>
                     </div>
                 </div>
             </section>

@@ -76,43 +76,52 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>Login | FlowTime</title>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="../../assets/css/login.css">
 </head>
 <body class="login-body">
 
+    <div class="login-image-area">
+        <div class="image-overlay"></div>
+        <div class="system-title">
+            <h1>Flow<span>Time</span></h1>
+            <p>Enterprise Attendance</p>
+        </div>
+    </div>
+
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <div class="logo">
-                    <span class="logo-icon"><i class="ph-fill ph-clock-user"></i></span>
-                    <span class="logo-text">FlowTime</span>
-                </div>
-                <h2>Welcome Back</h2>
-                <p>Sign in to continue to your dashboard</p>
+                <h2>Welcome</h2>
+                <p>Login with Email</p>
             </div>
             
             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                 <div class="form-group">
-                    <label>Username or Email</label>
+                    <label>Email ID</label>
                     <div class="input-wrapper">
                         <i class="ph ph-envelope-simple"></i>
-                        <input type="text" name="username" class="form-control" placeholder="Enter your username" value="<?php echo htmlspecialchars($username); ?>" required>
+                        <input type="text" name="username" class="form-control" placeholder="this.is@gmail.com" value="<?php echo htmlspecialchars($username); ?>" required>
                     </div>
                 </div>    
                 <div class="form-group">
                     <label>Password</label>
                     <div class="input-wrapper">
                         <i class="ph ph-lock-key"></i>
-                        <input type="password" name="password" class="form-control" placeholder="Enter your password" required>
+                        <input type="password" name="password" class="form-control" placeholder="••••••••••••" required>
                     </div>
                     <?php if(!empty($password_err)): ?>
                         <span class="error-text"><i class="ph-fill ph-warning-circle"></i> <?php echo $password_err; ?></span>
                     <?php endif; ?>
                 </div>
+                
+                <div class="form-group" style="text-align: right; margin-top: -10px;">
+                    <a href="#" style="font-size: 0.85rem; color: #718096; text-decoration: none;"></a>
+                </div>
+
                 <div class="form-group">
-                    <button type="submit" class="btn-primary">Sign In</button>
+                    <button type="submit" class="btn-primary">LOGIN</button>
                 </div>
             </form>
         </div>

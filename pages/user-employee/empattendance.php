@@ -10,7 +10,7 @@ require_once '../../includes/db_connect.php';
 $month_filter = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
 
 // Fetch strictly this user's logs
-$stmt = $conn->prepare("SELECT log_date, clock_in, clock_out, status FROM attendance_logs WHERE user_id = ? AND DATE_FORMAT(log_date, '%Y-%m') = ? ORDER BY log_date DESC");
+$stmt = $conn->prepare("SELECT log_date, morning_clock_in, morning_clock_out, afternoon_clock_in, afternoon_clock_out, status FROM attendance_logs WHERE user_id = ? AND DATE_FORMAT(log_date, '%Y-%m') = ? ORDER BY log_date DESC");
 $stmt->bind_param("is", $user_id, $month_filter);
 $stmt->execute();
 $attendance = $stmt->get_result();
@@ -79,9 +79,14 @@ $total_seconds = 0;
             $temp_attendance = [];
             while ($row = $attendance->fetch_assoc()) {
                 $temp_attendance[] = $row;
-                if ($row['clock_in'] && $row['clock_out']) {
-                    $total_seconds += strtotime($row['clock_out']) - strtotime($row['clock_in']);
+                $day_seconds = 0;
+                if ($row['morning_clock_in'] && $row['morning_clock_out']) {
+                    $day_seconds += strtotime($row['morning_clock_out']) - strtotime($row['morning_clock_in']);
                 }
+                if ($row['afternoon_clock_in'] && $row['afternoon_clock_out']) {
+                    $day_seconds += strtotime($row['afternoon_clock_out']) - strtotime($row['afternoon_clock_in']);
+                }
+                $total_seconds += $day_seconds;
             }
             $total_hours = floor($total_seconds / 3600);
             $total_minutes = floor(($total_seconds / 60) % 60);
@@ -103,8 +108,10 @@ $total_seconds = 0;
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Clock In</th>
-                            <th>Clock Out</th>
+                            <th>Morning In</th>
+                            <th>Morning Out</th>
+                            <th>Afternoon In</th>
+                            <th>Afternoon Out</th>
                             <th>Status</th>
                             <th>Total Hours</th>
                         </tr>
@@ -114,23 +121,32 @@ $total_seconds = 0;
                             <?php foreach ($temp_attendance as $row): ?>
                                 <?php
                                     $duration_display = '--';
-                                    if ($row['clock_in'] && $row['clock_out']) {
-                                        $clock_in_time = new DateTime($row['clock_in']);
-                                        $clock_out_time = new DateTime($row['clock_out']);
-                                        $interval = $clock_out_time->diff($clock_in_time);
-                                        $duration_display = $interval->format('%h hrs %i mins');
+                                    $day_total_seconds = 0;
+                                    if ($row['morning_clock_in'] && $row['morning_clock_out']) {
+                                        $day_total_seconds += strtotime($row['morning_clock_out']) - strtotime($row['morning_clock_in']);
+                                    }
+                                    if ($row['afternoon_clock_in'] && $row['afternoon_clock_out']) {
+                                        $day_total_seconds += strtotime($row['afternoon_clock_out']) - strtotime($row['afternoon_clock_in']);
+                                    }
+
+                                    if ($day_total_seconds > 0) {
+                                        $day_hours = floor($day_total_seconds / 3600);
+                                        $day_minutes = floor(($day_total_seconds / 60) % 60);
+                                        $duration_display = sprintf('%d hrs %d mins', $day_hours, $day_minutes);
                                     }
                                 ?>
                                 <tr>
                                     <td><?= htmlspecialchars($row['log_date']) ?></td>
-                                    <td><?= $row['clock_in'] ? date('h:i A', strtotime($row['clock_in'])) : '--' ?></td>
-                                    <td><?= $row['clock_out'] ? date('h:i A', strtotime($row['clock_out'])) : '--' ?></td>
+                                    <td><?= $row['morning_clock_in'] ? date('h:i A', strtotime($row['morning_clock_in'])) : '--' ?></td>
+                                    <td><?= $row['morning_clock_out'] ? date('h:i A', strtotime($row['morning_clock_out'])) : '--' ?></td>
+                                    <td><?= $row['afternoon_clock_in'] ? date('h:i A', strtotime($row['afternoon_clock_in'])) : '--' ?></td>
+                                    <td><?= $row['afternoon_clock_out'] ? date('h:i A', strtotime($row['afternoon_clock_out'])) : '--' ?></td>
                                     <td><span class="badge badge-<?= strtolower(str_replace(' ', '', $row['status'])) ?>"><?= htmlspecialchars($row['status']) ?></span></td>
                                     <td><?= $duration_display ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="5">No attendance records found for this month.</td></tr>
+                            <tr><td colspan="7">No attendance records found for this month.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>

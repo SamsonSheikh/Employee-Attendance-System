@@ -17,13 +17,13 @@ $hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "Kevin";
 // ==========================================================
 $query = "
     SELECT 
-        a.log_id, a.log_date, a.clock_in, a.clock_out, a.status,
+        a.log_id, a.log_date, a.morning_clock_in, a.morning_clock_out, a.afternoon_clock_in, a.afternoon_clock_out, a.status,
         u.first_name, u.last_name,
         d.department_name
     FROM attendance_logs a
     JOIN users u ON a.user_id = u.user_id
     LEFT JOIN departments d ON u.department_id = d.department_id
-    ORDER BY a.log_date DESC, a.clock_in DESC
+    ORDER BY a.log_date DESC, a.morning_clock_in DESC
     LIMIT 100
 ";
 $result = $conn->query($query);
@@ -133,6 +133,7 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                     </button>
                 </div>
 
+<<<<<<< HEAD
                 <div class="table-container">
                     <table class="attendance-table">
                         <thead>
@@ -182,6 +183,63 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                                     <td colspan="7" class="empty-state">
                                         <i class="ph ph-folder-open"></i>
                                         <p>No attendance records found.</p>
+=======
+                <button class="btn-export">
+                    <i class="ph ph-download-simple"></i> Export CSV
+                </button>
+            </section>
+
+            <section class="table-container">
+                <table class="attendance-table">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Department</th>
+                            <th>Date</th>
+                            <th>Morning In</th>
+                            <th>Morning Out</th>
+                            <th>Afternoon In</th>
+                            <th>Afternoon Out</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($result && $result->num_rows > 0): ?>
+                            <?php while($row = $result->fetch_assoc()): ?>
+                                <tr>
+                                    <td class="emp-name">
+                                        <div class="avatar-sm">
+                                            <?php echo strtoupper(substr($row['first_name'], 0, 1) . substr($row['last_name'], 0, 1)); ?>
+                                        </div>
+                                        <?php echo htmlspecialchars($row['first_name'] . ' ' . $row['last_name']); ?>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($row['department_name'] ?? 'N/A'); ?></td>
+                                    <td><?php echo date('M d, Y', strtotime($row['log_date'])); ?></td>
+                                    <td>
+                                        <?php 
+                                            echo $row['morning_clock_in'] ? date('h:i A', strtotime($row['morning_clock_in'])) : '<span class="missing-punch">--:--</span>'; 
+                                        ?>
+                                    </td>
+                                    <td><?php echo $row['morning_clock_out'] ? date('h:i A', strtotime($row['morning_clock_out'])) : '<span class="missing-punch">--:--</span>'; ?></td>
+                                    <td><?php echo $row['afternoon_clock_in'] ? date('h:i A', strtotime($row['afternoon_clock_in'])) : '<span class="missing-punch">--:--</span>'; ?></td>
+                                    <td>
+                                        <?php 
+                                            echo $row['afternoon_clock_out'] ? date('h:i A', strtotime($row['afternoon_clock_out'])) : '<span class="missing-punch">--:--</span>'; 
+                                        ?>
+                                    </td>
+                                    <td>
+                                        <?php 
+                                            // Apply dynamic CSS classes based on the ENUM status
+                                            $statusClass = strtolower(str_replace(' ', '-', $row['status']));
+                                        ?>
+                                        <span class="status-badge <?php echo $statusClass; ?>">
+                                            <?php echo htmlspecialchars($row['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn-icon" title="Edit Record"><i class="ph ph-pencil-simple"></i></button>
+>>>>>>> d57d342e4679f9986e53377aa6d3656172a33105
                                     </td>
                                 </tr>
                             <?php endif; ?>
@@ -222,12 +280,19 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                     <table class="attendance-table">
                         <thead>
                             <tr>
+<<<<<<< HEAD
                                 <th>Employee</th>
                                 <th>Department</th>
                                 <th>Selected Period</th>
                                 <th>Days Present</th>
                                 <th>Days Absent</th>
                                 <th>Total Hours Worked</th>
+=======
+                                <td colspan="9" class="empty-state">
+                                    <i class="ph ph-folder-open"></i>
+                                    <p>No attendance records found.</p>
+                                </td>
+>>>>>>> d57d342e4679f9986e53377aa6d3656172a33105
                             </tr>
                         </thead>
                         <tbody>

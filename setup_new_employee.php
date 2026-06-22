@@ -9,6 +9,7 @@ $password = "Welcome123!"; // Plain text password
 
 // Securely hash the password
 $password_hash = password_hash($password, PASSWORD_DEFAULT);
+$qr_identifier = 'flowtime-' . bin2hex(random_bytes(16));
 
 // Set fallback foreign keys
 $department_id = 1; 
@@ -21,8 +22,8 @@ $conn->query("INSERT IGNORE INTO departments (department_id, department_name) VA
 $conn->query("INSERT IGNORE INTO shifts (shift_id, shift_name, start_time, end_time) VALUES (1, 'Default Shift', '09:00:00', '17:00:00')");
 
 // Insert into the users table
-$stmt = $conn->prepare("INSERT INTO users (first_name, last_name, email, password_hash, department_id, role_id, shift_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssiii", $first_name, $last_name, $email, $password_hash, $department_id, $role_id, $shift_id);
+$stmt = $conn->prepare("INSERT INTO users (first_name, last_name, email, password_hash, department_id, role_id, shift_id, qr_identifier) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssiiis", $first_name, $last_name, $email, $password_hash, $department_id, $role_id, $shift_id, $qr_identifier);
 
 echo "<div style='font-family: sans-serif; max-width: 600px; margin: 50px auto;'>";
 echo "<h2>Database Setup: Add New Employee Account</h2>";

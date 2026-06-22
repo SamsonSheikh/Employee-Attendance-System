@@ -10,7 +10,6 @@
     /* Chart Colors */
     --color-present: #f26b4d; /* Orange */
     --color-absent: #48bb78;  /* Green */
-    --color-leave: #f6ad55;   /* Yellow */
 }
 
 * {
@@ -354,7 +353,6 @@ body {
 }
 .dot.present { background-color: var(--color-present); }
 .dot.absent { background-color: var(--color-absent); }
-.dot.leave { background-color: var(--color-leave); }
 
 /* Mock CSS Bar Chart - UPDATED FOR SCROLLING */
 .mock-chart {
@@ -406,7 +404,6 @@ body {
 
 .bar.present { background-color: var(--color-present); }
 .bar.absent { background-color: var(--color-absent); }
-.bar.leave { background-color: var(--color-leave); }
 
 .chart-group .label {
     position: absolute;

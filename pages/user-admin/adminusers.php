@@ -1,10 +1,530 @@
 <?php
 // Include the authentication function from the same directory
-require_once __DIR__ . '/functions.php'; // Change extension to .php if you rename it!
+require_once __DIR__ . '/functions.php';
 check_admin_login();
+
+require_once __DIR__ . '/../../includes/db_connect.php';
 
 // Get admin's name
 $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
+
+$flash = [
+    'type' => null,
+    'message' => null,
+];
+
+function h($v) {
+    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+}
+
+$action = $_GET['action'] ?? null;
+
+// --- Add / Bulk Add User backend ---
+if ($action === 'add_user' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $first_name = trim($_POST['first_name'] ?? '');
+        $last_name  = trim($_POST['last_name'] ?? '');
+        $email      = trim($_POST['email'] ?? '');
+        $password   = (string)($_POST['password'] ?? '');
+        $role_id    = $_POST['role_id'] ?? null;
+        $department_id = $_POST['department_id'] ?? null;
+        $shift_id       = $_POST['shift_id'] ?? null;
+
+        if ($first_name === '' || $last_name === '' || $email === '' || $password === '' || $role_id === null || $role_id === '') {
+            throw new Exception('Missing required fields.');
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('Invalid email address.');
+        }
+
+        // Ensure role exists
+        $role_id_int = (int)$role_id;
+        $stmt = $conn->prepare('SELECT role_id FROM roles WHERE role_id = ?');
+        $stmt->bind_param('i', $role_id_int);
+        $stmt->execute();
+        $stmt->store_result();
+        if ($stmt->num_rows === 0) {
+            throw new Exception('Selected role is invalid.');
+        }
+        $stmt->close();
+
+        $department_id_int = null;
+        if ($department_id !== null && $department_id !== '') {
+            $department_id_int = (int)$department_id;
+        }
+
+        $shift_id_int = null;
+        if ($shift_id !== null && $shift_id !== '') {
+            $shift_id_int = (int)$shift_id;
+        }
+
+        // Email uniqueness
+        $stmt = $conn->prepare('SELECT user_id FROM users WHERE email = ? LIMIT 1');
+        $stmt->bind_param('s', $email);
+        $stmt->execute();
+        $stmt->store_result();
+        if ($stmt->num_rows > 0) {
+            throw new Exception('Email already exists.');
+        }
+        $stmt->close();
+
+        if (strlen($password) < 8) {
+            throw new Exception('Password must be at least 8 characters.');
+        }
+
+        $password_hash = password_hash($password, PASSWORD_DEFAULT);
+
+        $stmt = $conn->prepare(
+            'INSERT INTO users (first_name, last_name, email, password_hash, department_id, role_id, shift_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+
+        $department_param = $department_id_int;
+        $shift_param = $shift_id_int;
+
+        $stmt->bind_param(
+            'ssssiii',
+            $first_name,
+            $last_name,
+            $email,
+            $password_hash,
+            $department_param,
+            $role_id_int,
+            $shift_param
+        );
+
+        $stmt->execute();
+        $stmt->close();
+
+        $flash['type'] = 'success';
+        $flash['message'] = 'User added successfully.';
+        header('Location: adminusers.php?flash=1');
+        exit;
+    } catch (Throwable $e) {
+        $flash['type'] = 'error';
+        $flash['message'] = $e->getMessage();
+        // Fall through to show flash; re-render page below
+    }
+
+// --- Bulk Add Users backend ---
+} elseif ($action === 'bulk_add_users' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $csvText = (string)($_POST['bulk_csv'] ?? '');
+        $defaultRoleId = $_POST['role_id'] ?? '';
+        $defaultDepartmentId = $_POST['department_id'] ?? '';
+        $defaultShiftId = $_POST['shift_id'] ?? '';
+
+        $csvText = trim($csvText);
+        if ($csvText === '') {
+            throw new Exception('Please paste CSV/TSV data to bulk add users.');
+        }
+
+        $role_id_int = (int)$defaultRoleId;
+        if ($defaultRoleId === '' || $defaultRoleId === null || $role_id_int <= 0) {
+            throw new Exception('Default Role is required for bulk add.');
+        }
+
+        // Ensure default role exists
+        $stmt = $conn->prepare('SELECT role_id FROM roles WHERE role_id = ?');
+        $stmt->bind_param('i', $role_id_int);
+        $stmt->execute();
+        $stmt->store_result();
+        if ($stmt->num_rows === 0) {
+            throw new Exception('Selected default role is invalid.');
+        }
+        $stmt->close();
+
+        $department_id_int_default = null;
+        if ($defaultDepartmentId !== null && $defaultDepartmentId !== '') {
+            $department_id_int_default = (int)$defaultDepartmentId;
+        }
+
+        $shift_id_int_default = null;
+        if ($defaultShiftId !== null && $defaultShiftId !== '') {
+            $shift_id_int_default = (int)$defaultShiftId;
+        }
+
+        // Split lines (support both CSV and TSV by detecting delimiter per line)
+        $lines = preg_split('/\r\n|\r|\n/', $csvText);
+        if ($lines === false) {
+            throw new Exception('Failed to parse bulk input.');
+        }
+
+        // If the first row looks like a header, skip it
+        $lineIndex = 0;
+        if (!empty($lines[0])) {
+            $headerCandidate = strtolower(trim($lines[0]));
+            if (str_contains($headerCandidate, 'first') && str_contains($headerCandidate, 'email')) {
+                $lineIndex = 1;
+            }
+        }
+
+        $added = 0;
+        $errors = [];
+
+        $conn->begin_transaction();
+
+        for ($i = $lineIndex; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') {
+                continue;
+            }
+
+            // Choose delimiter
+            $delimiter = str_contains($line, '\t') ? "\t" : ',';
+            $parts = str_getcsv($line, $delimiter);
+            if ($parts === false) {
+                $errors[] = 'Row ' . ($i + 1) . ': Unable to parse line.';
+                continue;
+            }
+
+            $first_name = trim($parts[0] ?? '');
+            $last_name  = trim($parts[1] ?? '');
+            $email      = trim($parts[2] ?? '');
+            $password   = (string)trim($parts[3] ?? '');
+
+            $rowRoleId = trim($parts[4] ?? '');
+            $rowDepartmentId = trim($parts[5] ?? '');
+            $rowShiftId = trim($parts[6] ?? '');
+
+            if ($first_name === '' || $last_name === '' || $email === '' || $password === '') {
+                $errors[] = 'Row ' . ($i + 1) . ': Missing required fields (first_name,last_name,email,password).';
+                continue;
+            }
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'Row ' . ($i + 1) . ': Invalid email address.';
+                continue;
+            }
+
+            if (strlen($password) < 8) {
+                $errors[] = 'Row ' . ($i + 1) . ': Password must be at least 8 characters.';
+                continue;
+            }
+
+            $rowRoleIdInt = $rowRoleId !== '' ? (int)$rowRoleId : $role_id_int;
+            if ($rowRoleId !== '' && $rowRoleIdInt <= 0) {
+                $errors[] = 'Row ' . ($i + 1) . ': Invalid role_id.';
+                continue;
+            }
+
+            $rowDepartmentIdInt = $rowDepartmentId !== '' ? (int)$rowDepartmentId : $department_id_int_default;
+            $rowShiftIdInt = $rowShiftId !== '' ? (int)$rowShiftId : $shift_id_int_default;
+
+            // Role exists check
+            $stmt = $conn->prepare('SELECT role_id FROM roles WHERE role_id = ?');
+            $stmt->bind_param('i', $rowRoleIdInt);
+            $stmt->execute();
+            $stmt->store_result();
+            if ($stmt->num_rows === 0) {
+                $errors[] = 'Row ' . ($i + 1) . ': role_id does not exist.';
+                $stmt->close();
+                continue;
+            }
+            $stmt->close();
+
+            // Email uniqueness
+            $stmt = $conn->prepare('SELECT user_id FROM users WHERE email = ? LIMIT 1');
+            $stmt->bind_param('s', $email);
+            $stmt->execute();
+            $stmt->store_result();
+            if ($stmt->num_rows > 0) {
+                $errors[] = 'Row ' . ($i + 1) . ': Email already exists (' . $email . ').';
+                $stmt->close();
+                continue;
+            }
+            $stmt->close();
+
+            $password_hash = password_hash($password, PASSWORD_DEFAULT);
+
+            $stmt = $conn->prepare(
+                'INSERT INTO users (first_name, last_name, email, password_hash, department_id, role_id, shift_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+            );
+
+            $department_param = $rowDepartmentIdInt;
+            $shift_param = $rowShiftIdInt;
+
+            $stmt->bind_param(
+                'ssssiii',
+                $first_name,
+                $last_name,
+                $email,
+                $password_hash,
+                $department_param,
+                $rowRoleIdInt,
+                $shift_param
+            );
+
+            $stmt->execute();
+            $stmt->close();
+
+            // Assign a unique QR identifier for this newly added user
+            $newUserId = $conn->insert_id;
+            if ($newUserId > 0) {
+                $qr_identifier = 'flowtime-' . bin2hex(random_bytes(16));
+                $stmt = $conn->prepare('UPDATE users SET qr_identifier = ? WHERE user_id = ?');
+                $stmt->bind_param('si', $qr_identifier, $newUserId);
+                $stmt->execute();
+                $stmt->close();
+            }
+
+            $added++;
+        }
+
+        if (!empty($errors) && $added === 0) {
+            $conn->rollback();
+            $flash['type'] = 'error';
+            $flash['message'] = 'Bulk add failed: ' . htmlspecialchars($errors[0], ENT_QUOTES, 'UTF-8');
+        } else {
+            $conn->commit();
+            $flash['type'] = empty($errors) ? 'success' : 'error';
+            $flash['message'] = 'Bulk add complete. Added: ' . $added . '. Failed: ' . count($errors) . '.';
+            if (!empty($errors)) {
+                $flash['errors'] = array_slice($errors, 0, 5);
+            }
+        }
+
+        header('Location: adminusers.php?flash=bulk');
+        exit;
+
+    } catch (Throwable $e) {
+        try { $conn->rollback(); } catch (Throwable $ignored) {}
+        $flash['type'] = 'error';
+        $flash['message'] = $e->getMessage();
+    }
+}
+
+// Simple flash via redirect
+if (isset($_GET['flash']) && $_GET['flash'] === '1') {
+    $flash['type'] = 'success';
+    $flash['message'] = 'User added successfully.';
+}
+if (isset($_GET['flash']) && $_GET['flash'] === 'bulk') {
+    $flash['type'] = 'success';
+    $flash['message'] = 'Bulk add processed. Please check the user list.';
+}
+if (isset($_GET['flash']) && $_GET['flash'] === 'deleted') {
+    $flash['type'] = 'success';
+    $flash['message'] = 'User deleted successfully.';
+}
+if (isset($_GET['flash']) && $_GET['flash'] === 'password_changed') {
+    $flash['type'] = 'success';
+    $flash['message'] = 'Password updated successfully.';
+}
+if (isset($_GET['flash']) && $_GET['flash'] === 'role_changed') {
+    $flash['type'] = 'success';
+    $flash['message'] = 'Role updated successfully.';
+}
+if (isset($_GET['error']) && $_GET['error'] === '1') {
+    $flash['type'] = 'error';
+    $flash['message'] = 'Failed to add user.';
+}
+
+// --- Load select options ---
+$roles = [];
+$stmt = $conn->query('SELECT role_id, role_name FROM roles ORDER BY role_name ASC');
+while ($row = $stmt->fetch_assoc()) {
+    $roles[] = $row;
+}
+
+$departments = [];
+$stmt = $conn->query('SELECT department_id, department_name FROM departments ORDER BY department_name ASC');
+while ($row = $stmt->fetch_assoc()) {
+    $departments[] = $row;
+}
+
+$shifts = [];
+$stmt = $conn->query('SELECT shift_id, shift_name FROM shifts ORDER BY shift_name ASC');
+while ($row = $stmt->fetch_assoc()) {
+    $shifts[] = $row;
+}
+
+// --- Bulk / Edit Account backends ---
+if ($action === 'delete_user' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $user_id = (int)($_POST['user_id'] ?? 0);
+        if ($user_id <= 0) {
+            throw new Exception('Invalid user id.');
+        }
+
+        $stmt = $conn->prepare('DELETE FROM users WHERE user_id = ?');
+        $stmt->bind_param('i', $user_id);
+        $stmt->execute();
+        $stmt->close();
+
+        header('Location: adminusers.php?flash=deleted');
+        exit;
+    } catch (Throwable $e) {
+        $flash['type'] = 'error';
+        $flash['message'] = $e->getMessage();
+    }
+}
+
+if ($action === 'change_password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $user_id = (int)($_POST['user_id'] ?? 0);
+        $new_password = (string)($_POST['new_password'] ?? '');
+        $confirm_password = (string)($_POST['confirm_password'] ?? '');
+
+        if ($user_id <= 0) {
+            throw new Exception('Invalid user id.');
+        }
+        if ($new_password === '' || $confirm_password === '') {
+            throw new Exception('Password fields are required.');
+        }
+        if (strlen($new_password) < 8) {
+            throw new Exception('New password must be at least 8 characters.');
+        }
+        if ($new_password !== $confirm_password) {
+            throw new Exception('Password confirmation does not match.');
+        }
+
+        $stmt = $conn->prepare('SELECT user_id FROM users WHERE user_id = ? LIMIT 1');
+        $stmt->bind_param('i', $user_id);
+        $stmt->execute();
+        $stmt->store_result();
+        if ($stmt->num_rows === 0) {
+            $stmt->close();
+            throw new Exception('User not found.');
+        }
+        $stmt->close();
+
+        $hash = password_hash($new_password, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare('UPDATE users SET password_hash = ? WHERE user_id = ?');
+        $stmt->bind_param('si', $hash, $user_id);
+        $stmt->execute();
+        $stmt->close();
+
+        header('Location: adminusers.php?flash=password_changed');
+        exit;
+    } catch (Throwable $e) {
+        $flash['type'] = 'error';
+        $flash['message'] = $e->getMessage();
+    }
+}
+
+// Role Assignment
+if ($action === 'update_user_role' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $user_id = (int)($_POST['user_id'] ?? 0);
+        $new_role_id = (int)($_POST['new_role_id'] ?? 0);
+        $reason = trim((string)($_POST['reason'] ?? ''));
+
+        if ($user_id <= 0 || $new_role_id <= 0) {
+            throw new Exception('Invalid user id or role id.');
+        }
+        if ($reason === '') {
+            throw new Exception('Reason is required.');
+        }
+
+        $stmt = $conn->prepare('SELECT role_id FROM roles WHERE role_id = ? LIMIT 1');
+        $stmt->bind_param('i', $new_role_id);
+        $stmt->execute();
+        $stmt->store_result();
+        if ($stmt->num_rows === 0) {
+            $stmt->close();
+            throw new Exception('Selected role is invalid.');
+        }
+        $stmt->close();
+
+        // Capture current role for audit
+        $oldRoleId = null;
+        $stmt = $conn->prepare('SELECT role_id FROM users WHERE user_id = ? LIMIT 1');
+        $stmt->bind_param('i', $user_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        if ($res && $row = $res->fetch_assoc()) {
+            $oldRoleId = (int)$row['role_id'];
+        }
+        $stmt->close();
+        if ($oldRoleId === null) {
+            throw new Exception('User not found.');
+        }
+
+        $stmt = $conn->prepare('UPDATE users SET role_id = ? WHERE user_id = ?');
+        $stmt->bind_param('ii', $new_role_id, $user_id);
+        $stmt->execute();
+        $stmt->close();
+
+        // Best-effort audit log (optional table)
+        $adminUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'Admin';
+        try {
+            // common names: audit_log / role_audit / security_audit
+            $tablesToTry = ['audit_log', 'role_audit', 'security_audit'];
+            $insertDone = false;
+
+            foreach ($tablesToTry as $tbl) {
+                // Check existence
+                $check = $conn->prepare("SHOW TABLES LIKE ?");
+                $check->bind_param('s', $tbl);
+                $check->execute();
+                $check->store_result();
+                if ($check->num_rows > 0) {
+                    $check->close();
+
+                    // Try flexible insert with common columns
+                    $stmtIns = null;
+                    // Try 4 columns first
+                    $stmtIns = $conn->prepare("INSERT INTO {$tbl} (admin_username, user_id, action, reason, created_at) VALUES (?, ?, ?, ?, NOW())");
+                    if ($stmtIns) {
+                        $actionText = 'Role changed';
+                        $stmtIns->bind_param('siss', $adminUser, $user_id, $actionText, $reason);
+                        if ($stmtIns->execute()) {
+                            $insertDone = true;
+                        }
+                        $stmtIns->close();
+                    }
+
+                    if (!$insertDone) {
+                        // Fallback: different column set
+                        $stmtIns = $conn->prepare("INSERT INTO {$tbl} (admin_username, user_id, new_role_id, reason, created_at) VALUES (?, ?, ?, ?, NOW())");
+                        if ($stmtIns) {
+                            $stmtIns->bind_param('sii s', $adminUser, $user_id, $new_role_id, $reason);
+                            $stmtIns->execute();
+                            $stmtIns->close();
+                            $insertDone = true;
+                        }
+                    }
+
+                    if ($insertDone) {
+                        break;
+                    }
+                } else {
+                    $check->close();
+                }
+            }
+        } catch (Throwable $ignored) {
+            // ignore audit failures
+        }
+
+        header('Location: adminusers.php?flash=role_changed');
+        exit;
+    } catch (Throwable $e) {
+        $flash['type'] = 'error';
+        $flash['message'] = $e->getMessage();
+    }
+}
+
+// --- Load user list ---
+$users = [];
+$sql = 'SELECT u.user_id, u.first_name, u.last_name, u.email,
+               r.role_name,
+               u.department_id,
+               d.department_name,
+               s.shift_name,
+               u.created_at
+        FROM users u
+        LEFT JOIN roles r ON r.role_id = u.role_id
+        LEFT JOIN departments d ON d.department_id = u.department_id
+        LEFT JOIN shifts s ON s.shift_id = u.shift_id
+        ORDER BY u.user_id DESC';
+
+$stmt = $conn->query($sql);
+while ($row = $stmt->fetch_assoc()) {
+    $users[] = $row;
+}
 ?>
 
 <!DOCTYPE html>
@@ -30,7 +550,6 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
     </header>
 
     <div class="main-wrapper">
-        
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
         <aside class="sidebar" id="sidebar">
@@ -52,7 +571,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                     <li><a href="#"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
             </div>
-            
+
             <div class="sidebar-footer">
                 <a href="../../pages/public/logout.php" class="sidebar-logout">
                     <i class="ph ph-sign-out"></i> Logout
@@ -68,9 +587,22 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
             <section class="users-section">
                 <div class="section-header">
                     <h2>User List</h2>
-                    <button class="btn-primary add-user-btn"><i class="ph ph-plus"></i> Add New User</button>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+                        <button class="btn-primary add-user-btn" type="button" onclick="document.getElementById('addUserModal').style.display='block'">
+                            <i class="ph ph-plus"></i> Add New User
+                        </button>
+                        <button class="btn-secondary" type="button" onclick="document.getElementById('bulkAddModal').style.display='block'">
+                            <i class="ph ph-file-csv"></i> Bulk Add Users
+                        </button>
+                    </div>
                 </div>
-                
+
+                <?php if (!empty($flash['type']) && !empty($flash['message'])): ?>
+                    <div style="margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: <?php echo $flash['type'] === 'success' ? '#dcfce7' : '#fee2e2'; ?>; color: #111; border: 1px solid <?php echo $flash['type'] === 'success' ? '#86efac' : '#fca5a5'; ?>">
+                        <?php echo h($flash['message']); ?>
+                    </div>
+                <?php endif; ?>
+
                 <div class="users-table-container">
                     <table class="users-table">
                         <thead>
@@ -84,43 +616,216 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>#001</td>
-                                <td>John Doe</td>
-                                <td>john@example.com</td>
-                                <td><span class="badge badge-admin">Admin</span></td>
-                                <td><span class="status-badge status-active">Active</span></td>
-                                <td class="action-buttons">
-                                    <button class="btn-icon edit-btn" title="Edit"><i class="ph ph-pencil"></i></button>
-                                    <button class="btn-icon delete-btn" title="Delete"><i class="ph ph-trash"></i></button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>#002</td>
-                                <td>Jane Smith</td>
-                                <td>jane@example.com</td>
-                                <td><span class="badge badge-hr">HR</span></td>
-                                <td><span class="status-badge status-active">Active</span></td>
-                                <td class="action-buttons">
-                                    <button class="btn-icon edit-btn" title="Edit"><i class="ph ph-pencil"></i></button>
-                                    <button class="btn-icon delete-btn" title="Delete"><i class="ph ph-trash"></i></button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>#003</td>
-                                <td>Michael Johnson</td>
-                                <td>michael@example.com</td>
-                                <td><span class="badge badge-employee">Employee</span></td>
-                                <td><span class="status-badge status-inactive">Inactive</span></td>
-                                <td class="action-buttons">
-                                    <button class="btn-icon edit-btn" title="Edit"><i class="ph ph-pencil"></i></button>
-                                    <button class="btn-icon delete-btn" title="Delete"><i class="ph ph-trash"></i></button>
-                                </td>
-                            </tr>
+                            <?php if (count($users) === 0): ?>
+                                <tr>
+                                    <td colspan="6" style="text-align:center;">No users found.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($users as $u): ?>
+                                    <tr>
+                                        <td>#<?php echo h($u['user_id']); ?></td>
+                                        <td><?php echo h($u['first_name'] . ' ' . $u['last_name']); ?></td>
+                                        <td><?php echo h($u['email']); ?></td>
+                                        <td>
+                                            <?php
+                                                $roleName = $u['role_name'] ?? '';
+                                                $badgeClass = 'badge-employee';
+                                                $badgeText = 'Employee';
+                                                if (strcasecmp($roleName, 'Administrator') === 0) {
+                                                    $badgeClass = 'badge-admin';
+                                                    $badgeText = 'Admin';
+                                                } elseif (stripos($roleName, 'Manager') !== false || strcasecmp($roleName, 'Supervisor') === 0) {
+                                                    $badgeClass = 'badge-hr';
+                                                    $badgeText = 'HR';
+                                                }
+                                            ?>
+                                            <span class="badge <?php echo h($badgeClass); ?>"><?php echo h($badgeText); ?></span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-active">Active</span>
+                                        </td>
+                                        <td class="action-buttons">
+                                            <form method="POST" action="adminusers.php?action=change_password" style="display:inline-flex; gap:8px;">
+                                                <input type="hidden" name="user_id" value="<?php echo h($u['user_id']); ?>" />
+                                                <input type="hidden" name="new_password" value="" />
+                                                <input type="hidden" name="confirm_password" value="" />
+                                                <button class="btn-icon edit-btn" title="Change Password (Use modal below)" type="button" onclick="openChangePasswordModal(<?php echo (int)$u['user_id']; ?>)" aria-label="Change password">
+                                                    <i class="ph ph-pencil"></i>
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="adminusers.php?action=delete_user" style="display:inline;" onsubmit="return confirm('Delete user #<?php echo h($u['user_id']); ?>? This cannot be undone.');">
+                                                <input type="hidden" name="user_id" value="<?php echo h($u['user_id']); ?>" />
+                                                <button class="btn-icon delete-btn" title="Delete" type="submit">
+                                                    <i class="ph ph-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </section>
+
+            <!-- Add User Modal -->
+            <div id="addUserModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9999;">
+                <div style="background:#fff; max-width:640px; margin:60px auto; padding:18px 18px; border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h2 style="margin:0; font-size:18px;">Add New User</h2>
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('addUserModal').style.display='none'">Close</button>
+                    </div>
+
+                    <form method="POST" action="adminusers.php?action=add_user">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                            <div class="form-group">
+                                <label for="first_name">First Name <span class="required">*</span></label>
+                                <input id="first_name" name="first_name" class="form-control" required />
+                            </div>
+                            <div class="form-group">
+                                <label for="last_name">Last Name <span class="required">*</span></label>
+                                <input id="last_name" name="last_name" class="form-control" required />
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="email">Email <span class="required">*</span></label>
+                                <input id="email" name="email" type="email" class="form-control" required />
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="password">Password <span class="required">*</span></label>
+                                <input id="password" name="password" type="password" class="form-control" required minlength="8" />
+                                <small style="display:block; margin-top:6px; color:#666;">Minimum 8 characters.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="role_id">Role <span class="required">*</span></label>
+                                <select id="role_id" name="role_id" class="form-control" required>
+                                    <option value="">-- Select Role --</option>
+                                    <?php foreach ($roles as $r): ?>
+                                        <option value="<?php echo h($r['role_id']); ?>"><?php echo h($r['role_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="department_id">Department</label>
+                                <select id="department_id" name="department_id" class="form-control">
+                                    <option value="">-- Optional --</option>
+                                    <?php foreach ($departments as $d): ?>
+                                        <option value="<?php echo h($d['department_id']); ?>"><?php echo h($d['department_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="shift_id">Shift</label>
+                                <select id="shift_id" name="shift_id" class="form-control">
+                                    <option value="">-- Optional --</option>
+                                    <?php foreach ($shifts as $s): ?>
+                                        <option value="<?php echo h($s['shift_id']); ?>"><?php echo h($s['shift_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+                            <button type="button" class="btn-secondary" onclick="document.getElementById('addUserModal').style.display='none'">Cancel</button>
+                            <button type="submit" class="btn-primary"><i class="ph ph-plus"></i> Create User</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Bulk Add Users Modal -->
+            <div id="bulkAddModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9999;">
+                <div style="background:#fff; max-width:740px; margin:60px auto; padding:18px 18px; border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h2 style="margin:0; font-size:18px;">Bulk Add Users</h2>
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('bulkAddModal').style.display='none'">Close</button>
+                    </div>
+
+                    <div style="margin: 10px 0 16px; padding: 10px 12px; border-radius: 10px; background: #f3f4f6; color:#111;">
+                        <div style="font-weight:600; margin-bottom:6px;">Paste CSV/TSV</div>
+                        <div style="font-size:13px; color:#374151;">
+                            Columns: <b>first_name,last_name,email,password</b>, then optionally <b>role_id</b>, <b>department_id</b>, <b>shift_id</b>.
+                            If you omit role/department/shift columns, defaults below will be used.
+                            <br/><br/>
+                            Example (CSV):<br/>
+                            <code>Jane,Smith,jane.smith@flowtime.com,Password123,3,1,1</code><br/>
+                            <code>John,Doe,john.doe@flowtime.com,Password123</code>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="adminusers.php?action=bulk_add_users">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="bulk_csv">Bulk input (CSV/TSV)</label>
+                                <textarea id="bulk_csv" name="bulk_csv" class="form-control" rows="8" placeholder="Paste rows here..." required></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="role_id">Default Role <span class="required">*</span></label>
+                                <select id="role_id" name="role_id" class="form-control" required>
+                                    <option value="">-- Select Role --</option>
+                                    <?php foreach ($roles as $r): ?>
+                                        <option value="<?php echo h($r['role_id']); ?>"><?php echo h($r['role_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="department_id">Default Department</label>
+                                <select id="department_id" name="department_id" class="form-control">
+                                    <option value="">-- Optional --</option>
+                                    <?php foreach ($departments as $d): ?>
+                                        <option value="<?php echo h($d['department_id']); ?>"><?php echo h($d['department_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="shift_id">Default Shift</label>
+                                <select id="shift_id" name="shift_id" class="form-control">
+                                    <option value="">-- Optional --</option>
+                                    <?php foreach ($shifts as $s): ?>
+                                        <option value="<?php echo h($s['shift_id']); ?>"><?php echo h($s['shift_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+                            <button type="button" class="btn-secondary" onclick="document.getElementById('bulkAddModal').style.display='none'">Cancel</button>
+                            <button type="submit" class="btn-primary"><i class="ph ph-plus"></i> Bulk Add</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Change Password Modal -->
+            <div id="changePasswordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:99999;">
+                <div style="background:#fff; max-width:540px; margin:70px auto; padding:18px; border-radius:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h2 style="margin:0; font-size:18px;">Change Password</h2>
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('changePasswordModal').style.display='none'">Close</button>
+                    </div>
+
+                    <form method="POST" action="adminusers.php?action=change_password" onsubmit="return confirm('Update password for this user?');">
+                        <input type="hidden" name="user_id" id="cp_user_id" />
+
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label for="cp_new_password">New Password <span class="required">*</span></label>
+                            <input id="cp_new_password" name="new_password" type="password" class="form-control" required minlength="8" />
+                        </div>
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label for="cp_confirm_password">Confirm Password <span class="required">*</span></label>
+                            <input id="cp_confirm_password" name="confirm_password" type="password" class="form-control" required minlength="8" />
+                        </div>
+
+                        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+                            <button type="button" class="btn-secondary" onclick="document.getElementById('changePasswordModal').style.display='none'">Cancel</button>
+                            <button type="submit" class="btn-primary"><i class="ph ph-key"></i> Update Password</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
             <!-- Role Assignment Section -->
             <section class="role-assignment-section">
@@ -130,25 +835,25 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 </div>
 
                 <div class="role-assignment-card">
-                    <form class="role-assignment-form" id="roleAssignmentForm">
+                    <form class="role-assignment-form" id="roleAssignmentForm" method="POST" action="adminusers.php?action=update_user_role">
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="userSelect">Select User <span class="required">*</span></label>
                                 <select id="userSelect" name="user_id" class="form-control" required>
                                     <option value="">-- Choose a user --</option>
-                                    <option value="001">John Doe (Admin)</option>
-                                    <option value="002">Jane Smith (HR)</option>
-                                    <option value="003">Michael Johnson (Employee)</option>
+                                    <?php foreach ($users as $u): ?>
+                                        <option value="<?php echo (int)$u['user_id']; ?>"><?php echo h($u['first_name'] . ' ' . $u['last_name']); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
 
                             <div class="form-group">
                                 <label for="newRole">New Role <span class="required">*</span></label>
-                                <select id="newRole" name="new_role" class="form-control" required>
+                                <select id="newRole" name="new_role_id" class="form-control" required>
                                     <option value="">-- Select role --</option>
-                                    <option value="admin">Admin</option>
-                                    <option value="hr">HR Manager</option>
-                                    <option value="employee">Employee</option>
+                                    <?php foreach ($roles as $r): ?>
+                                        <option value="<?php echo h($r['role_id']); ?>"><?php echo h($r['role_name']); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
 
@@ -166,7 +871,7 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 </div>
             </section>
 
-            <!-- Security Controls Section -->
+            <!-- Security Controls Section (UI placeholders preserved) -->
             <section class="security-controls-section">
                 <div class="section-header">
                     <h2>Security Controls</h2>
@@ -174,7 +879,6 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                 </div>
 
                 <div class="security-grid">
-                    <!-- Force Password Reset -->
                     <div class="security-card">
                         <div class="security-card-header">
                             <div class="security-icon password-reset-icon"><i class="ph ph-key"></i></div>
@@ -188,16 +892,15 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                                 <label for="passwordResetUser">Select User <span class="required">*</span></label>
                                 <select id="passwordResetUser" name="user_id" class="form-control" required>
                                     <option value="">-- Choose a user --</option>
-                                    <option value="001">John Doe</option>
-                                    <option value="002">Jane Smith</option>
-                                    <option value="003">Michael Johnson</option>
+                                    <?php foreach ($users as $u): ?>
+                                        <option value="<?php echo (int)$u['user_id']; ?>"><?php echo h($u['first_name'] . ' ' . $u['last_name']); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <button type="submit" class="btn-warning"><i class="ph ph-warning"></i> Force Reset</button>
                         </form>
                     </div>
 
-                    <!-- Instant User Deactivation -->
                     <div class="security-card">
                         <div class="security-card-header">
                             <div class="security-icon deactivate-icon"><i class="ph ph-lock"></i></div>
@@ -211,9 +914,9 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                                 <label for="deactivateUser">Select User <span class="required">*</span></label>
                                 <select id="deactivateUser" name="user_id" class="form-control" required>
                                     <option value="">-- Choose a user --</option>
-                                    <option value="001">John Doe</option>
-                                    <option value="002">Jane Smith</option>
-                                    <option value="003">Michael Johnson</option>
+                                    <?php foreach ($users as $u): ?>
+                                        <option value="<?php echo (int)$u['user_id']; ?>"><?php echo h($u['first_name'] . ' ' . $u['last_name']); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -224,7 +927,6 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                         </form>
                     </div>
 
-                    <!-- Session Termination -->
                     <div class="security-card">
                         <div class="security-card-header">
                             <div class="security-icon session-icon"><i class="ph ph-sign-out"></i></div>
@@ -238,9 +940,9 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                                 <label for="sessionTerminateUser">Select User <span class="required">*</span></label>
                                 <select id="sessionTerminateUser" name="user_id" class="form-control" required>
                                     <option value="">-- Choose a user --</option>
-                                    <option value="001">John Doe</option>
-                                    <option value="002">Jane Smith</option>
-                                    <option value="003">Michael Johnson</option>
+                                    <?php foreach ($users as $u): ?>
+                                        <option value="<?php echo (int)$u['user_id']; ?>"><?php echo h($u['first_name'] . ' ' . $u['last_name']); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <button type="submit" class="btn-danger"><i class="ph ph-sign-out"></i> Terminate Sessions</button>
@@ -248,7 +950,6 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                     </div>
                 </div>
 
-                <!-- Audit Log -->
                 <div class="audit-log-section">
                     <h3>Recent Security Actions</h3>
                     <div class="audit-log">
@@ -270,7 +971,6 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
                     </div>
                 </div>
             </section>
-
         </main>
     </div>
 
@@ -285,72 +985,34 @@ $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
             sidebarOverlay.classList.toggle('active');
         }
 
-        menuToggle.addEventListener('click', toggleMenu);
-        closeSidebar.addEventListener('click', toggleMenu);
-        sidebarOverlay.addEventListener('click', toggleMenu);
+        if (menuToggle) menuToggle.addEventListener('click', toggleMenu);
+        if (closeSidebar) closeSidebar.addEventListener('click', toggleMenu);
+        if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleMenu);
 
-        // Role Assignment Form Handler
-        document.getElementById('roleAssignmentForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const userId = document.getElementById('userSelect').value;
-            const newRole = document.getElementById('newRole').value;
-            const reason = document.getElementById('reason').value;
+        // Change Password Modal helpers
+        function openChangePasswordModal(userId) {
+            const cpUserId = document.getElementById('cp_user_id');
+            const modal = document.getElementById('changePasswordModal');
+            if (!cpUserId || !modal) return;
+            cpUserId.value = userId;
+            modal.style.display = 'block';
+        }
 
-            if (!userId || !newRole) {
-                alert('Please select both a user and a new role');
-                return;
-            }
+        // Modal close on outside click
+        function wireOutsideClose(modalId) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+            window.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
 
-            const confirmation = confirm(`Confirm: Change this user's role to "${newRole}"?\n\nReason: ${reason}`);
-            if (confirmation) {
-                alert('Role assignment submitted! (Integration needed with backend)');
-                this.reset();
-            }
-        });
-
-        // Force Password Reset Form Handler
-        document.getElementById('forcePasswordResetForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const userId = document.getElementById('passwordResetUser').value;
-
-            if (!userId) {
-                alert('Please select a user');
-                return;
-            }
-
-            if (confirm('Force this user to reset their password on next login?')) {
-                alert('Password reset enforced! (Integration needed with backend)');
-                this.reset();
-            }
-        });
-
-        // Deactivate User Form Handler
-        document.getElementById('deactivateUserForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const userId = document.getElementById('deactivateUser').value;
-            const reason = document.getElementById('deactivationReason').value;
-
-            if (!userId || !reason) {
-                alert('Please select a user and provide a reason');
-                return;
-            }
-        });
-
-        // Terminate Sessions Form Handler
-        document.getElementById('terminateSessionForm')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const userId = document.getElementById('sessionTerminateUser').value;
-
-            if (!userId) {
-                alert('Please select a user');
-                return;
-            }
-
-            if (confirm('Terminate all active sessions for this user?')) {
-                alert('All sessions terminated! (Integration needed with backend)');
-                this.reset();
-            }
-        });
+        wireOutsideClose('addUserModal');
+        wireOutsideClose('bulkAddModal');
+        wireOutsideClose('changePasswordModal');
     </script>
 </body>
 </html>
+

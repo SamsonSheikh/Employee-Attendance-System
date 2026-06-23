@@ -84,6 +84,8 @@ $q2 = "
         u.user_id, u.first_name, u.last_name, d.department_name,
         SUM(CASE WHEN a.status != 'Absent' AND (a.morning_clock_in IS NOT NULL OR a.afternoon_clock_in IS NOT NULL) THEN 1 ELSE 0 END) as total_present,
         SUM(CASE WHEN a.status = 'Absent' THEN 1 ELSE 0 END) as total_absent,
+        SUM(CASE WHEN a.morning_clock_in IS NOT NULL THEN 1 ELSE 0 END) + SUM(CASE WHEN a.afternoon_clock_in IS NOT NULL THEN 1 ELSE 0 END) as total_clock_ins,
+        SUM(CASE WHEN a.morning_clock_out IS NOT NULL THEN 1 ELSE 0 END) + SUM(CASE WHEN a.afternoon_clock_out IS NOT NULL THEN 1 ELSE 0 END) as total_clock_outs,
         SUM(
             COALESCE(TIMESTAMPDIFF(MINUTE, a.morning_clock_in, a.morning_clock_out), 0) + 
             COALESCE(TIMESTAMPDIFF(MINUTE, a.afternoon_clock_in, a.afternoon_clock_out), 0)
@@ -125,97 +127,6 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="../../assets/css/hrattendance.css">
-    <style>
-        /* Tab Navigation Styles */
-        .tab-navigation { display: flex; gap: 2rem; border-bottom: 2px solid var(--border-color); margin-bottom: 1.5rem; }
-        .tab-btn { background: none; border: none; padding: 0.75rem 0; font-size: 1rem; font-weight: 500; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
-        .tab-btn:hover { color: var(--text-main); }
-        .tab-btn.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Filter Form */
-        .month-filter-form { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;}
-        .month-filter-form select { padding: 0.55rem; border-radius: 6px; border: 1px solid var(--border-color); outline: none; cursor: pointer;}
-        
-        .filter-btn { background: var(--primary-color); color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.4rem;}
-        .filter-btn:hover { background: #df583b; }
-        .hours-badge { background-color: #ebf8ff; color: #2b6cb0; padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 600; font-size: 0.9rem; }
-
-        /* --- Updated Search Box with Button --- */
-        .search-box {
-            display: flex;
-            align-items: center;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 0 !important; /* Overrides external CSS */
-            overflow: hidden;
-        }
-        .search-box input {
-            border: none;
-            outline: none;
-            padding: 0.55rem 1rem;
-            font-size: 0.9rem;
-            width: 200px;
-            margin: 0 !important; /* Overrides external CSS */
-        }
-        .search-btn {
-            background: none;
-            border: none;
-            border-left: 1px solid var(--border-color);
-            padding: 0.55rem 0.8rem;
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .search-btn:hover {
-            color: var(--primary-color);
-            background-color: #fff5f2;
-        }
-
-        /* --- Modal Styles --- */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex; justify-content: center; align-items: center;
-            z-index: 1000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
-        }
-        .modal-overlay.active { opacity: 1; visibility: visible; }
-        .modal-content {
-            background-color: var(--bg-card); width: 90%; max-width: 400px;
-            border-radius: 12px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            transform: translateY(-20px); transition: transform 0.3s ease;
-        }
-        .modal-overlay.active .modal-content { transform: translateY(0); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; border-bottom: 1px solid var(--border-color); }
-        .modal-header h2 { font-size: 1.15rem; color: var(--text-main); }
-        .close-modal { background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; transition: 0.2s; }
-        .close-modal:hover { color: var(--text-main); }
-
-        /* --- Department Selection UI --- */
-        .dept-select-btn {
-            display: flex; justify-content: space-between; align-items: center;
-            min-width: 200px; text-align: left;
-        }
-        .dept-list {
-            padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem;
-            max-height: 50vh; overflow-y: auto;
-        }
-        .dept-item {
-            padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color);
-            cursor: pointer; transition: all 0.2s; font-size: 0.95rem; color: var(--text-main);
-        }
-        .dept-item:hover { background-color: #f8fafc; border-color: #cbd5e1; }
-        .dept-item.selected {
-            border-color: var(--primary-color); background-color: #fff5f2;
-            color: var(--primary-color); font-weight: 600;
-        }
-    </style>
 </head>
 <body>
 
@@ -404,6 +315,8 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                                 <th>Selected Period</th>
                                 <th>Days Present</th>
                                 <th>Days Absent</th>
+                                <th>Total In</th>
+                                <th>Total Out</th>
                                 <th>Total Hours Worked</th>
                             </tr>
                         </thead>
@@ -421,6 +334,10 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                                         <td><?php echo $monthName . ' ' . $selected_year; ?></td>
                                         <td style="color: #48bb78; font-weight: 600;"><?php echo $row['total_present'] ? $row['total_present'] : '0'; ?></td>
                                         <td style="color: #e53e3e; font-weight: 600;"><?php echo $row['total_absent'] ? $row['total_absent'] : '0'; ?></td>
+                                        
+                                        <td style="color: #2b6cb0; font-weight: 600;"><?php echo $row['total_clock_ins'] ? $row['total_clock_ins'] : '0'; ?></td>
+                                        <td style="color: #c05621; font-weight: 600;"><?php echo $row['total_clock_outs'] ? $row['total_clock_outs'] : '0'; ?></td>
+                                        
                                         <td>
                                             <span class="hours-badge">
                                                 <?php echo $row['total_hours'] ? number_format($row['total_hours'], 2) . ' hrs' : '0.00 hrs'; ?>
@@ -430,7 +347,7 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="6" class="empty-state">
+                                    <td colspan="8" class="empty-state">
                                         <i class="ph ph-calendar-blank"></i>
                                         <p>No recorded hours found for this query.</p>
                                     </td>

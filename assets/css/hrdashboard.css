@@ -470,6 +470,76 @@ body {
 }
 
 /* =========================================
+   LIVE STATUS TABLE STYLES
+   ========================================= */
+.live-status-section {
+    margin-top: 1.5rem;
+}
+
+.live-status-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 800px;
+}
+
+.live-status-table th {
+    background-color: #f8fafc;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    text-align: left;
+    letter-spacing: 0.05em;
+}
+
+.live-status-table td {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.live-status-table tbody tr {
+    transition: background-color 0.2s;
+}
+
+.live-status-table tbody tr:hover {
+    background-color: #fbfbfc;
+}
+
+/* =========================================
+   MODAL STYLES
+   ========================================= */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 1000;
+    opacity: 0; visibility: hidden; transition: all 0.3s ease;
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+.modal-content {
+    background-color: var(--bg-card);
+    width: 90%; max-width: 500px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-20px); transition: transform 0.3s ease;
+}
+.modal-overlay.active .modal-content { transform: translateY(0); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; border-bottom: 1px solid var(--border-color); }
+.modal-header h2 { font-size: 1.15rem; color: var(--text-main); }
+.close-modal { background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; transition: 0.2s; }
+.close-modal:hover { color: var(--text-main); }
+
+/* Make Calendar Cells Clickable */
+.cal-cell { cursor: pointer; transition: background-color 0.2s; }
+.cal-cell:hover { background-color: #f1f5f9; }
+.cal-cell.blank { cursor: default; }
+.cal-cell.blank:hover { background-color: #fbfbfc; }
+
+/* =========================================
    RESPONSIVE DESIGN (MEDIA QUERIES)
    ========================================= */
 

@@ -14,12 +14,12 @@ $hr_name = isset($_SESSION['first_name']) ? $_SESSION['first_name'] : "Kevin";
 $days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // ==========================================================
-// HANDLE FORM SUBMISSIONS (ADD & DELETE)
+// HANDLE FORM SUBMISSIONS (ADD, EDIT, DELETE)
 // ==========================================================
 $message = "";
 $message_type = "success";
 
-// Handle Add Employee
+// 1. Handle Add Employee
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_employee'])) {
     $first_name = trim($_POST['first_name']);
     $last_name = trim($_POST['last_name']);
@@ -43,11 +43,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_employee'])) {
     $stmt->close();
 }
 
-// Handle Delete (Deactivate) Employee
+// 2. Handle Edit Employee
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_employee'])) {
+    $edit_id = intval($_POST['edit_user_id']);
+    $first_name = trim($_POST['first_name']);
+    $last_name = trim($_POST['last_name']);
+    $email = trim($_POST['email']);
+    $dept_id = intval($_POST['department_id']);
+    $role_id = intval($_POST['role_id']);
+    
+    $stmt = $conn->prepare("UPDATE users SET first_name = ?, last_name = ?, email = ?, department_id = ?, role_id = ? WHERE user_id = ?");
+    $stmt->bind_param("ssssii", $first_name, $last_name, $email, $dept_id, $role_id, $edit_id);
+    
+    if ($stmt->execute()) {
+        $message = "Employee profile updated successfully!";
+    } else {
+        $message = "Error updating employee. Email might be in use by another account.";
+        $message_type = "error";
+    }
+    $stmt->close();
+}
+
+// 3. Handle Delete (Deactivate) Employee
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
     $del_id = intval($_POST['delete_user_id']);
-    // Note: Performing a hard delete since 'is_active' doesn't exist in the schema.
-    // The ON DELETE CASCADE in the DB will automatically clean up their attendance/schedules.
+    // Performing a hard delete. The ON DELETE CASCADE in the DB cleans up attendance/schedules.
     $stmt = $conn->prepare("DELETE FROM users WHERE user_id = ?");
     $stmt->bind_param("i", $del_id);
     if($stmt->execute()) {
@@ -64,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $filter_dept_id = isset($_GET['dept_id']) ? $_GET['dept_id'] : '';
 
-// 1. Fetch Departments (For Modals)
+// Fetch Departments (For Modals)
 $departments = [];
 $depts_res = $conn->query("SELECT * FROM departments ORDER BY department_name ASC");
 if($depts_res) {
@@ -73,8 +93,14 @@ if($depts_res) {
     }
 }
 
-// 2. Fetch Roles (For Add Employee Modal)
-$roles = $conn->query("SELECT * FROM roles ORDER BY role_name ASC");
+// Fetch Roles into an array so we can reuse it in multiple modals
+$roles_array = [];
+$roles_res = $conn->query("SELECT * FROM roles ORDER BY role_name ASC");
+if($roles_res) {
+    while($r = $roles_res->fetch_assoc()){
+        $roles_array[] = $r;
+    }
+}
 
 // Determine selected department name for the filter button
 $selected_dept_name = 'All Departments';
@@ -87,9 +113,9 @@ if ($filter_dept_id !== '') {
     }
 }
 
-// 3. Fetch Users Master List with Search & Filters
+// Fetch Users Master List with Search & Filters
 $users_query = "
-    SELECT u.user_id, u.first_name, u.last_name, u.email, u.created_at, 
+    SELECT u.user_id, u.first_name, u.last_name, u.email, u.created_at, u.department_id, u.role_id,
            d.department_name, r.role_name
     FROM users u
     LEFT JOIN departments d ON u.department_id = d.department_id
@@ -123,7 +149,7 @@ if (!empty($params)) {
 $stmt_users->execute();
 $users_result = $stmt_users->get_result();
 
-// 4. Fetch all saved schedules and organize them by user_id
+// Fetch all saved schedules and organize them by user_id
 $schedules = [];
 $sched_res = $conn->query("SELECT * FROM employee_schedules");
 if ($sched_res) {
@@ -141,6 +167,43 @@ if ($sched_res) {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="../../assets/css/hremployees.css">
+    <style>
+        .search-filter-group { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .search-box {
+            display: flex; align-items: center; background: var(--bg-card);
+            border: 1px solid var(--border-color); border-radius: 6px;
+            padding: 0; overflow: hidden;
+        }
+        .search-box input { border: none; outline: none; padding: 0.55rem 1rem; font-size: 0.9rem; width: 220px; }
+        .search-btn {
+            background: none; border: none; border-left: 1px solid var(--border-color);
+            padding: 0.55rem 0.8rem; color: var(--text-muted); cursor: pointer;
+            transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .search-btn:hover { color: var(--primary-color); background-color: #fff5f2; }
+
+        .filter-dropdown {
+            padding: 0.6rem 1rem; border: 1px solid var(--border-color);
+            border-radius: 6px; background-color: var(--bg-card);
+            color: var(--text-main); font-size: 0.9rem; cursor: pointer; outline: none;
+        }
+        .dept-select-btn { display: flex; justify-content: space-between; align-items: center; min-width: 200px; text-align: left; }
+
+        .schedule-summary-badges { display: flex; gap: 0.3rem; }
+        .day-badge {
+            display: flex; align-items: center; justify-content: center;
+            width: 24px; height: 24px; border-radius: 4px;
+            font-size: 0.7rem; font-weight: 600; cursor: help; transition: 0.2s;
+        }
+        .day-badge.active-day { background-color: var(--primary-color); color: white; box-shadow: 0 2px 4px rgba(242, 107, 77, 0.2); }
+        .day-badge.inactive-day { background-color: #edf2f7; color: #a0aec0; }
+        .day-badge:hover { transform: scale(1.1); }
+
+        .dept-list { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; max-height: 50vh; overflow-y: auto; }
+        .dept-item { padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s; font-size: 0.95rem; color: var(--text-main); }
+        .dept-item:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+        .dept-item.selected { border-color: var(--primary-color); background-color: #fff5f2; color: var(--primary-color); font-weight: 600; }
+    </style>
 </head>
 <body>
 
@@ -149,25 +212,18 @@ if ($sched_res) {
             <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
             <span class="brand-text">FlowTime</span>
         </div>
-        <button class="menu-toggle" id="menuToggle" aria-label="Toggle Sidebar">
-            <i class="ph ph-list"></i>
-        </button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Toggle Sidebar"><i class="ph ph-list"></i></button>
     </header>
 
     <div class="main-wrapper">
-        
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
         <aside class="sidebar" id="sidebar">
-            <button class="close-sidebar" id="closeSidebar" aria-label="Close Sidebar">
-                <i class="ph ph-x"></i>
-            </button>
-
+            <button class="close-sidebar" id="closeSidebar" aria-label="Close Sidebar"><i class="ph ph-x"></i></button>
             <div class="sidebar-brand desktop-brand">
                 <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
                 <span class="brand-text">FlowTime</span>
             </div>
-
             <div class="sidebar-menu-wrapper">
                 <ul class="sidebar-links">
                     <li><a href="../../pages/hr/hrdashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
@@ -202,9 +258,7 @@ if ($sched_res) {
                 <form method="GET" class="search-filter-group" id="filterForm">
                     <div class="search-box">
                         <input type="text" name="search" placeholder="Search by name or email..." value="<?php echo htmlspecialchars($search); ?>">
-                        <button type="submit" class="search-btn" title="Search">
-                            <i class="ph ph-magnifying-glass"></i>
-                        </button>
+                        <button type="submit" class="search-btn" title="Search"><i class="ph ph-magnifying-glass"></i></button>
                     </div>
                     
                     <input type="hidden" name="dept_id" id="filter_dept_id" value="<?php echo htmlspecialchars($filter_dept_id); ?>">
@@ -236,9 +290,7 @@ if ($sched_res) {
                                 <tr>
                                     <td>
                                         <div class="emp-profile">
-                                            <div class="avatar-sm">
-                                                <?php echo strtoupper(substr($row['first_name'], 0, 1) . substr($row['last_name'], 0, 1)); ?>
-                                            </div>
+                                            <div class="avatar-sm"><?php echo strtoupper(substr($row['first_name'], 0, 1) . substr($row['last_name'], 0, 1)); ?></div>
                                             <div class="emp-info">
                                                 <span class="emp-name"><?php echo htmlspecialchars($row['first_name'] . ' ' . $row['last_name']); ?></span>
                                                 <span class="emp-email" style="display:block; font-size: 0.8rem; color: var(--text-muted);"><?php echo htmlspecialchars($row['email']); ?></span>
@@ -269,7 +321,6 @@ if ($sched_res) {
                                                 } else {
                                                     $title = "$day: Off";
                                                 }
-                                                
                                                 echo "<span class='day-badge $class' title='$title'>" . $short_days[$day] . "</span>";
                                             }
                                             ?>
@@ -278,7 +329,17 @@ if ($sched_res) {
                                     <td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td>
                                     <td>
                                         <div class="action-buttons" style="display:flex; gap:0.5rem;">
-                                            <button class="btn-icon" title="Edit Profile"><i class="ph ph-pencil-simple"></i></button>
+                                            <button type="button" class="btn-icon" title="Edit Profile" 
+                                                onclick="openEditModal(
+                                                    <?php echo $row['user_id']; ?>, 
+                                                    '<?php echo htmlspecialchars(addslashes($row['first_name'])); ?>', 
+                                                    '<?php echo htmlspecialchars(addslashes($row['last_name'])); ?>', 
+                                                    '<?php echo htmlspecialchars(addslashes($row['email'])); ?>', 
+                                                    '<?php echo $row['department_id']; ?>', 
+                                                    '<?php echo $row['role_id']; ?>'
+                                                )">
+                                                <i class="ph ph-pencil-simple"></i>
+                                            </button>
                                             
                                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to deactivate this employee? This action cannot be undone.');">
                                                 <input type="hidden" name="delete_user_id" value="<?php echo $row['user_id']; ?>">
@@ -309,24 +370,22 @@ if ($sched_res) {
                 <button class="close-modal" id="closeAddModalBtn"><i class="ph ph-x"></i></button>
             </div>
             <form method="POST" action="hremployees.php">
-                <div class="form-grid" style="padding: 1.5rem; display: grid; gap: 1rem;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group" style="margin:0;">
-                            <label>First Name</label>
-                            <input type="text" name="first_name" required placeholder="e.g. Jane">
-                        </div>
-                        <div class="form-group" style="margin:0;">
-                            <label>Last Name</label>
-                            <input type="text" name="last_name" required placeholder="e.g. Doe">
-                        </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" name="first_name" required placeholder="e.g. Jane">
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" name="last_name" required placeholder="e.g. Doe">
                     </div>
                     
-                    <div class="form-group" style="margin:0;">
+                    <div class="form-group full-width">
                         <label>Email Address</label>
                         <input type="email" name="email" required placeholder="jane.doe@company.com">
                     </div>
                     
-                    <div class="form-group" style="margin:0;">
+                    <div class="form-group">
                         <label>Department</label>
                         <select name="department_id" class="filter-dropdown" style="width: 100%;" required>
                             <option value="">Select Department</option>
@@ -336,19 +395,71 @@ if ($sched_res) {
                         </select>
                     </div>
                     
-                    <div class="form-group" style="margin:0;">
+                    <div class="form-group">
                         <label>System Role</label>
                         <select name="role_id" class="filter-dropdown" style="width: 100%;" required>
                             <option value="">Select Role</option>
-                            <?php if($roles && $roles->num_rows > 0): while($role = $roles->fetch_assoc()): ?>
+                            <?php foreach($roles_array as $role): ?>
                                 <option value="<?php echo $role['role_id']; ?>"><?php echo htmlspecialchars($role['role_name']); ?></option>
-                            <?php endwhile; endif; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                 </div>
-                <div class="modal-footer" style="padding: 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 1rem;">
+                <div class="modal-footer">
                     <button type="button" class="btn-secondary" id="cancelAddModalBtn">Cancel</button>
                     <button type="submit" name="add_employee" class="btn-primary" style="width: auto;">Create Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="editEmployeeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Employee</h2>
+                <button class="close-modal" type="button" id="closeEditModalBtn"><i class="ph ph-x"></i></button>
+            </div>
+            <form method="POST" action="hremployees.php">
+                <input type="hidden" name="edit_user_id" id="edit_user_id">
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" name="first_name" id="edit_first_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" name="last_name" id="edit_last_name" required>
+                    </div>
+                    
+                    <div class="form-group full-width">
+                        <label>Email Address</label>
+                        <input type="email" name="email" id="edit_email" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Department</label>
+                        <select name="department_id" id="edit_department_id" class="filter-dropdown" style="width: 100%;" required>
+                            <option value="">Select Department</option>
+                            <?php foreach($departments as $dept): ?>
+                                <option value="<?php echo $dept['department_id']; ?>"><?php echo htmlspecialchars($dept['department_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>System Role</label>
+                        <select name="role_id" id="edit_role_id" class="filter-dropdown" style="width: 100%;" required>
+                            <option value="">Select Role</option>
+                            <?php foreach($roles_array as $role): ?>
+                                <option value="<?php echo $role['role_id']; ?>"><?php echo htmlspecialchars($role['role_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" id="cancelEditModalBtn">Cancel</button>
+                    <button type="submit" name="edit_employee" class="btn-primary" style="width: auto;">Save Changes</button>
                 </div>
             </form>
         </div>
@@ -392,6 +503,26 @@ if ($sched_res) {
         document.getElementById('closeAddModalBtn').addEventListener('click', () => addModal.classList.remove('active'));
         document.getElementById('cancelAddModalBtn').addEventListener('click', () => addModal.classList.remove('active'));
         addModal.addEventListener('click', (e) => { if (e.target === addModal) addModal.classList.remove('active'); });
+
+        // Edit Employee Modal Logic
+        const editModal = document.getElementById('editEmployeeModal');
+        
+        function openEditModal(userId, firstName, lastName, email, deptId, roleId) {
+            // Populate the fields
+            document.getElementById('edit_user_id').value = userId;
+            document.getElementById('edit_first_name').value = firstName;
+            document.getElementById('edit_last_name').value = lastName;
+            document.getElementById('edit_email').value = email;
+            document.getElementById('edit_department_id').value = deptId;
+            document.getElementById('edit_role_id').value = roleId;
+            
+            // Show the modal
+            editModal.classList.add('active');
+        }
+
+        document.getElementById('closeEditModalBtn').addEventListener('click', () => editModal.classList.remove('active'));
+        document.getElementById('cancelEditModalBtn').addEventListener('click', () => editModal.classList.remove('active'));
+        editModal.addEventListener('click', (e) => { if (e.target === editModal) editModal.classList.remove('active'); });
 
         // Department Filter Modal Logic
         const deptModal = document.getElementById('deptModal');

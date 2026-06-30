@@ -131,6 +131,29 @@ if (!$log) {
         .status-indicator { font-size: 1.25rem; font-weight: 600; padding: 0.75rem 2rem; border-radius: 999px; display: inline-block; margin-bottom: 2rem; }
         .status-clocked-in { background-color: #d1fae5; color: #065f46; border: 2px solid #34d399; }
         .status-clocked-out { background-color: #fee2e2; color: #991b1b; border: 2px solid #f87171; }
+        /* Live Clock Styles */
+        .live-clock-wrapper {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin: 0 auto 2rem auto;
+            max-width: 400px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .live-clock-time {
+            font-family: 'ui-monospace', 'SFMono-Regular', Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1;
+        }
+        .live-clock-date {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
     </style>
     <style>
         /* QR Scanner Modal Styles */
@@ -182,6 +205,10 @@ if (!$log) {
             <?php if ($message): ?><div style="padding: 1rem; background: #e0f2fe; color: #0369a1; border-radius: 0.5rem; margin-bottom: 1.5rem;"><strong><?= htmlspecialchars($message) ?></strong></div><?php endif; ?>
             
             <div class="punch-clock">
+                <div class="live-clock-wrapper">
+                    <div id="live-clock-time"></div>
+                    <div id="live-clock-date"></div>
+                </div>
                 <div class="status-indicator <?= $status_class; ?>"><?= $status_text; ?></div>
                 <form method="POST" id="clockForm">
                     <button type="button" id="clockInBtn" class="btn-massive btn-clock-in" <?= !$can_clock_in ? 'disabled' : ''; ?>>CLOCK IN</button>
@@ -256,6 +283,29 @@ if (!$log) {
         }
         scannerModal.style.display = 'none';
     });
+
+    // --- Live Clock Logic ---
+    function updateClock() {
+        const now = new Date();
+        
+        // Format Time
+        let hours = now.getHours();
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const seconds = now.getSeconds().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // Hour '0' should be '12'
+        const timeString = `${hours}:${minutes}:${seconds} ${ampm}`;
+        
+        // Format Date
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const dateString = now.toLocaleDateString('en-US', options);
+
+        document.getElementById('live-clock-time').textContent = timeString;
+        document.getElementById('live-clock-date').textContent = dateString;
+    }
+    updateClock(); // Initial call to display clock immediately
+    setInterval(updateClock, 1000); // Update every second
 </script>
 </body>
 </html>

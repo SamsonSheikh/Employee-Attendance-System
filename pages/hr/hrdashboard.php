@@ -1,6 +1,16 @@
 <?php
 session_start();
 
+// ==========================================================
+// HANDLE LOGOUT
+// ==========================================================
+if (isset($_GET['logout']) && $_GET['logout'] == 'true') {
+    session_unset();
+    session_destroy();
+    header("Location: ../public/login.php");
+    exit();
+}
+
 // 1. Security Check
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header("Location: ../public/login.php");
@@ -163,7 +173,11 @@ $live_status_result = $conn->query($live_status_query);
                 </ul>
             </div>
             
-            <div class="sidebar-footer"></div>
+            <div class="sidebar-footer" style="padding: 1.5rem; margin-top: auto; border-top: 1px solid var(--border-color);">
+                <a href="?logout=true" style="display: flex; align-items: center; gap: 1rem; color: #e53e3e; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: all 0.2s;" onmouseover="this.style.color='#c53030'" onmouseout="this.style.color='#e53e3e'">
+                    <i class="ph ph-sign-out" style="font-size: 1.25rem;"></i> Log Out
+                </a>
+            </div>
         </aside>
 
         <main class="content">
@@ -246,6 +260,9 @@ $live_status_result = $conn->query($live_status_query);
 
             </section>
 
+            <!-- ============================================== -->
+            <!-- LIVE STATUS TABLE FOR TODAY                    -->
+            <!-- ============================================== -->
             <section class="live-status-section" style="margin-top: 1.5rem;">
                 <div class="chart-card" style="padding: 0; overflow: hidden;">
                     <div class="card-header" style="padding: 1.5rem 1.5rem 0 1.5rem; margin-bottom: 1rem;">
@@ -329,6 +346,7 @@ $live_status_result = $conn->query($live_status_query);
         </main>
     </div>
 
+    <!-- CALENDAR MODAL -->
     <div class="modal-overlay" id="dayDetailsModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -337,20 +355,24 @@ $live_status_result = $conn->query($live_status_query);
             </div>
             <div style="padding: 1.5rem;">
                 <div style="display: flex; gap: 1.5rem;">
+                    <!-- Present Column -->
                     <div style="flex: 1; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; text-align: center;">
                         <h3 style="color: var(--color-present); font-size: 2rem; margin-bottom: 0.2rem;" id="modalPresentCount">0</h3>
                         <p style="color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">Present</p>
                         
                         <div id="modalPresentList" style="max-height: 180px; overflow-y: auto; text-align: left; font-size: 0.85rem; color: var(--text-main); display: flex; flex-direction: column; gap: 0.3rem;">
-                            </div>
+                            <!-- Names get injected here -->
+                        </div>
                     </div>
                     
+                    <!-- Absent Column -->
                     <div style="flex: 1; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; text-align: center;">
                         <h3 style="color: var(--color-absent); font-size: 2rem; margin-bottom: 0.2rem;" id="modalAbsentCount">0</h3>
                         <p style="color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">Absent</p>
                         
                         <div id="modalAbsentList" style="max-height: 180px; overflow-y: auto; text-align: left; font-size: 0.85rem; color: var(--text-main); display: flex; flex-direction: column; gap: 0.3rem;">
-                            </div>
+                            <!-- Names get injected here -->
+                        </div>
                     </div>
                 </div>
             </div>

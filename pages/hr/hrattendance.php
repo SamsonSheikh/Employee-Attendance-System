@@ -1,9 +1,19 @@
 <?php
 session_start();
 
+// ==========================================================
+// HANDLE LOGOUT
+// ==========================================================
+if (isset($_GET['logout']) && $_GET['logout'] == 'true') {
+    session_unset();
+    session_destroy();
+    header("Location: ../../public/login.php");
+    exit();
+}
+
 // Security Check
 if (!isset($_SESSION['user_id'])) {
-    // header("Location: login.php");
+    // header("Location: ../../public/login.php");
     // exit();
 }
 
@@ -162,7 +172,13 @@ $monthName = date("F", mktime(0, 0, 0, $selected_month, 10));
                     <li><a href="../../pages/hr/hrsettings.php"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
             </div>
-            <div class="sidebar-footer"></div>
+            
+            <!-- NEW LOGOUT BUTTON FOOTER -->
+            <div class="sidebar-footer" style="padding: 1.5rem; margin-top: auto; border-top: 1px solid var(--border-color);">
+                <a href="?logout=true" style="display: flex; align-items: center; gap: 1rem; color: #e53e3e; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: all 0.2s;" onmouseover="this.style.color='#c53030'" onmouseout="this.style.color='#e53e3e'">
+                    <i class="ph ph-sign-out" style="font-size: 1.25rem;"></i> Log Out
+                </a>
+            </div>
         </aside>
 
         <main class="content">

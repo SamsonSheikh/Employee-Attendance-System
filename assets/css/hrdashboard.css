@@ -10,6 +10,7 @@
     /* Chart Colors */
     --color-present: #f26b4d; /* Orange */
     --color-absent: #48bb78;  /* Green */
+    --color-holiday: #4299e1; /* Blue */
 }
 
 * {
@@ -281,7 +282,7 @@ body {
     color: var(--text-muted);
 }
 
-/* --- Data Grid (Chart & Holidays) --- */
+/* --- Data Grid (Calendar & Holidays) --- */
 .data-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -294,6 +295,7 @@ body {
     padding: 1.5rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
     border: 1px solid var(--border-color);
+    min-width: 0;
 }
 
 .card-header {
@@ -308,35 +310,12 @@ body {
     font-weight: 600;
 }
 
-/* --- Chart Layout --- */
-.chart-filters {
-    display: flex;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.chart-filters button {
-    padding: 0.4rem 1rem;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
-
-.chart-filters button.active {
-    background-color: var(--primary-color);
-    color: white;
-}
-
 .chart-legend {
     display: flex;
     flex-wrap: wrap;
     gap: 1.5rem;
     font-size: 0.85rem;
     color: var(--text-muted);
-    margin-bottom: 2rem;
 }
 
 .legend-item {
@@ -353,67 +332,112 @@ body {
 }
 .dot.present { background-color: var(--color-present); }
 .dot.absent { background-color: var(--color-absent); }
+.dot.holiday { background-color: var(--color-holiday); }
 
-/* Mock CSS Bar Chart - UPDATED FOR SCROLLING */
-.mock-chart {
-    height: 250px;
+/* =========================================
+   NEW CALENDAR STYLES
+   ========================================= */
+.calendar-controls {
     display: flex;
-    align-items: flex-end;
-    padding-bottom: 30px; /* Space for date labels */
-    border-bottom: 1px dashed var(--border-color);
-    position: relative;
-    justify-content: flex-start; /* Aligns items to the left so they scroll right */
-    overflow-x: auto; /* Enables horizontal scrolling */
-    overflow-y: hidden;
-    gap: 15px; /* Spacing between days */
-    scroll-behavior: smooth;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0 0.5rem;
 }
 
-/* Custom scrollbar styling for the chart */
-.mock-chart::-webkit-scrollbar {
-    height: 6px;
-}
-.mock-chart::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 4px;
-}
-.mock-chart::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
-}
-.mock-chart::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+.calendar-controls h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-main);
 }
 
-.chart-group {
-    display: flex;
-    gap: 3px; /* Tighter gap between the actual Present/Absent/Leave bars */
-    height: 100%;
-    align-items: flex-end;
-    position: relative;
-    flex: 0 0 auto; /* Locks the width so elements don't squish */
-    min-width: 45px; /* Ensures minimum readable width */
-    justify-content: center;
-}
-
-.bar {
-    width: 15px;
-    border-radius: 2px 2px 0 0;
-    transition: height 0.3s ease; /* Smooth animation when height changes */
-}
-
-.bar.present { background-color: var(--color-present); }
-.bar.absent { background-color: var(--color-absent); }
-
-.chart-group .label {
-    position: absolute;
-    bottom: -25px; /* Position below the dashed border */
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.75rem;
+.calendar-controls button {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
     color: var(--text-muted);
-    white-space: nowrap;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
 }
+
+.calendar-controls button:hover {
+    background: #edf2f7;
+    color: var(--text-main);
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background-color: var(--border-color);
+    gap: 1px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cal-header {
+    background: #f8fafc;
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.cal-cell {
+    background: var(--bg-card);
+    min-height: 90px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.cal-cell.blank {
+    background: #fbfbfc;
+}
+
+.cal-day-num {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    align-self: flex-end;
+}
+
+.cal-day-num.today-num {
+    background-color: var(--primary-color);
+    color: white;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.cal-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 6px;
+    border-radius: 4px;
+    color: white;
+    text-align: left;
+}
+
+.stat-badge.present { background-color: #fff5f2; color: var(--color-present); border: 1px solid #fed7d7; }
+.stat-badge.absent { background-color: #f0fff4; color: var(--color-absent); border: 1px solid #c6f6d5; }
 
 /* --- Holidays List --- */
 .holiday-list {
@@ -444,6 +468,76 @@ body {
     color: var(--text-main);
     text-align: right;
 }
+
+/* =========================================
+   LIVE STATUS TABLE STYLES
+   ========================================= */
+.live-status-section {
+    margin-top: 1.5rem;
+}
+
+.live-status-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 800px;
+}
+
+.live-status-table th {
+    background-color: #f8fafc;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    text-align: left;
+    letter-spacing: 0.05em;
+}
+
+.live-status-table td {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.live-status-table tbody tr {
+    transition: background-color 0.2s;
+}
+
+.live-status-table tbody tr:hover {
+    background-color: #fbfbfc;
+}
+
+/* =========================================
+   MODAL STYLES
+   ========================================= */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 1000;
+    opacity: 0; visibility: hidden; transition: all 0.3s ease;
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+.modal-content {
+    background-color: var(--bg-card);
+    width: 90%; max-width: 500px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-20px); transition: transform 0.3s ease;
+}
+.modal-overlay.active .modal-content { transform: translateY(0); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; border-bottom: 1px solid var(--border-color); }
+.modal-header h2 { font-size: 1.15rem; color: var(--text-main); }
+.close-modal { background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; transition: 0.2s; }
+.close-modal:hover { color: var(--text-main); }
+
+/* Make Calendar Cells Clickable */
+.cal-cell { cursor: pointer; transition: background-color 0.2s; }
+.cal-cell:hover { background-color: #f1f5f9; }
+.cal-cell.blank { cursor: default; }
+.cal-cell.blank:hover { background-color: #fbfbfc; }
 
 /* =========================================
    RESPONSIVE DESIGN (MEDIA QUERIES)
@@ -499,12 +593,19 @@ body {
         gap: 1rem;
     }
 
-    /* Mobile Chart Adjustments */
-    .chart-group {
-        min-width: 30px; /* Allow groups to be slightly smaller on phones */
+    /* Calendar Mobile Adjustments */
+    .cal-cell {
+        min-height: 60px;
+        padding: 0.3rem;
     }
-    .bar {
-        width: 8px !important; /* Slimmer bars for mobile */
+    .stat-badge {
+        font-size: 0.6rem;
+        padding: 2px 4px;
+        text-align: center;
+    }
+    .cal-header {
+        font-size: 0.7rem;
+        padding: 0.5rem 0.2rem;
     }
 }
 

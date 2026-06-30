@@ -46,7 +46,7 @@ body {
 }
 .menu-toggle { background: none; border: none; font-size: 1.5rem; color: var(--text-main); cursor: pointer; }
 
-/* --- Sidebar Base (Identical to Dashboard) --- */
+/* --- Sidebar Base --- */
 .sidebar-brand { display: flex; align-items: center; gap: 0.75rem; font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
 .desktop-brand { padding: 0 1.5rem 1.5rem 1.5rem; }
 .brand-icon { color: var(--primary-color); font-size: 1.8rem; display: flex; }
@@ -75,7 +75,33 @@ body {
 .page-header h1 { font-size: 1.8rem; color: #1a202c; }
 .page-header .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 0.3rem; }
 
-/* --- Action Bar (Search, Filters, Export) --- */
+/* --- Tab Navigation --- */
+.tab-navigation {
+    display: flex;
+    gap: 2rem;
+    border-bottom: 2px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 0.75rem 0;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px; /* Overlaps the bottom border */
+    transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--text-main); }
+.tab-btn.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+/* --- Action Bar & Filters --- */
 .action-bar {
     display: flex;
     justify-content: space-between;
@@ -91,16 +117,40 @@ body {
     flex-wrap: wrap;
 }
 
+/* Updated Search Box with Button inside */
 .search-box {
     display: flex;
     align-items: center;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    padding: 0.5rem 1rem;
-    color: var(--text-muted);
+    padding: 0;
+    overflow: hidden;
 }
-.search-box input { border: none; outline: none; margin-left: 0.5rem; padding: 0.2rem; font-size: 0.9rem; width: 200px; }
+.search-box input { 
+    border: none; 
+    outline: none; 
+    padding: 0.55rem 1rem; 
+    font-size: 0.9rem; 
+    width: 200px; 
+    margin: 0;
+}
+.search-btn {
+    background: none;
+    border: none;
+    border-left: 1px solid var(--border-color);
+    padding: 0.55rem 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.search-btn:hover {
+    color: var(--primary-color);
+    background-color: #fff5f2;
+}
 
 .filter-dropdown {
     padding: 0.6rem 1rem;
@@ -111,6 +161,39 @@ body {
     font-size: 0.9rem;
     cursor: pointer;
     outline: none;
+}
+
+.filter-btn { 
+    background: var(--primary-color); 
+    color: white; 
+    border: none; 
+    padding: 0.6rem 1.2rem; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    font-weight: 600; 
+    transition: background-color 0.2s; 
+    display: flex; 
+    align-items: center; 
+    gap: 0.4rem;
+}
+.filter-btn:hover { background: #df583b; }
+
+/* Monthly Summaries Filter Form */
+.month-filter-form {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.month-filter-form select {
+    padding: 0.55rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-main);
+    font-size: 0.9rem;
+    outline: none;
+    cursor: pointer;
 }
 
 .btn-export {
@@ -135,13 +218,13 @@ body {
     border-radius: 12px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
     border: 1px solid var(--border-color);
-    overflow-x: auto; /* Enables horizontal scrolling on small screens */
+    overflow-x: auto;
 }
 
 .attendance-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 800px; /* Prevents columns from squishing too much */
+    min-width: 800px;
 }
 
 .attendance-table th, .attendance-table td {
@@ -188,6 +271,9 @@ body {
 
 .missing-punch { color: #a0aec0; font-style: italic; }
 
+.punch-block { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.punch-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;}
+
 /* Status Badges */
 .status-badge {
     padding: 0.25rem 0.75rem;
@@ -200,11 +286,104 @@ body {
 .status-badge.absent { background-color: var(--status-absent-bg); color: var(--status-absent-text); }
 .status-badge.half-day { background-color: var(--status-halfday-bg); color: var(--status-halfday-text); }
 
+/* Hours Badge for Summaries Tab */
+.hours-badge {
+    background-color: #ebf8ff;
+    color: #2b6cb0;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
 .btn-icon { background: none; border: none; color: var(--text-muted); font-size: 1.2rem; cursor: pointer; transition: color 0.2s; }
 .btn-icon:hover { color: var(--primary-color); }
 
 .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
 .empty-state i { font-size: 3rem; margin-bottom: 0.5rem; opacity: 0.5; }
+
+/* =========================================
+   MODAL STYLES (Department Selection)
+   ========================================= */
+.modal-overlay {
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100vw; 
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    z-index: 1000; 
+    opacity: 0; 
+    visibility: hidden; 
+    transition: all 0.3s ease;
+}
+.modal-overlay.active { opacity: 1; visibility: visible; }
+
+.modal-content {
+    background-color: var(--bg-card); 
+    width: 90%; 
+    max-width: 400px;
+    border-radius: 12px; 
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-20px); 
+    transition: transform 0.3s ease;
+}
+.modal-overlay.active .modal-content { transform: translateY(0); }
+
+.modal-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    padding: 1.5rem; 
+    border-bottom: 1px solid var(--border-color); 
+}
+.modal-header h2 { font-size: 1.15rem; color: var(--text-main); }
+
+.close-modal { 
+    background: none; 
+    border: none; 
+    font-size: 1.5rem; 
+    color: var(--text-muted); 
+    cursor: pointer; 
+    transition: 0.2s; 
+}
+.close-modal:hover { color: var(--text-main); }
+
+/* Department Selection UI */
+.dept-select-btn {
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    min-width: 200px; 
+    text-align: left;
+}
+.dept-list {
+    padding: 1rem; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 0.5rem;
+    max-height: 50vh; 
+    overflow-y: auto;
+}
+.dept-item {
+    padding: 0.75rem 1rem; 
+    border-radius: 6px; 
+    border: 1px solid var(--border-color);
+    cursor: pointer; 
+    transition: all 0.2s; 
+    font-size: 0.95rem; 
+    color: var(--text-main);
+}
+.dept-item:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+.dept-item.selected {
+    border-color: var(--primary-color); 
+    background-color: #fff5f2;
+    color: var(--primary-color); 
+    font-weight: 600;
+}
 
 /* --- Responsive Media Queries --- */
 @media (max-width: 1024px) {
@@ -217,6 +396,8 @@ body {
     .sidebar.active { transform: translateX(0); }
     .close-sidebar { display: block; }
     .content { padding: 1.5rem; }
-    .search-filter-group { flex-direction: column; width: 100%; }
+    .search-filter-group, .month-filter-form { flex-direction: column; width: 100%; align-items: stretch; }
     .search-box input { width: 100%; }
+    .dept-select-btn { width: 100%; }
+    .tab-navigation { gap: 1rem; overflow-x: auto; white-space: nowrap; padding-bottom: 0.5rem; }
 }

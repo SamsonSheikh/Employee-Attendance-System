@@ -28,9 +28,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->bind_result($user_id, $first_name, $email, $password_hash, $role_id);
             if ($stmt->fetch() && password_verify($password, $password_hash)) {
                 $db_login_success = true;
+
+                // Log successful login
+                $log_stmt = $conn->prepare("INSERT INTO login_activity (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, 'success')");
+                if ($log_stmt) {
+                    $ip_address = $_SERVER['REMOTE_ADDR'];
+                    $user_agent = $_SERVER['HTTP_USER_AGENT'];
+                    $log_stmt->bind_param("iss", $user_id, $ip_address, $user_agent);
+                    $log_stmt->execute();
+                    $log_stmt->close();
+                }
+
                 $_SESSION["loggedin"] = true;
                 $_SESSION["user_id"] = $user_id;
                 $_SESSION["username"] = $email;
+                $_SESSION["login_time"] = time(); // Set current timestamp on login
                 $_SESSION["first_name"] = $first_name;
                 
                 // Redirect based on role (1=Admin, 2=HR, 3=Employee)
@@ -52,16 +64,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($username === "admin" && $password === "admin123") {
             $_SESSION["loggedin"] = true;
             $_SESSION["username"] = $username;
+            $_SESSION["login_time"] = time();
             header("location: ../../pages/user-admin/admin_dashboard.php");
             exit;
         } elseif ($username === "hr" && $password === "hr123") {
             $_SESSION["loggedin"] = true;
             $_SESSION["username"] = $username;
+            $_SESSION["login_time"] = time();
             header("location: ../../pages/hr/hrdashboard.php");
             exit;
         } elseif ($username === "employee" && $password === "employee123") {
             $_SESSION["loggedin"] = true;
             $_SESSION["username"] = $username;
+            $_SESSION["login_time"] = time();
             header("location: ../../pages/user-employee/empdashboard.php");
             exit;
         } else {

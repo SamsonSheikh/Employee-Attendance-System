@@ -2,8 +2,7 @@
 // Include the authentication function from the same directory
 require_once __DIR__ . '/functions.php'; // Change extension to .php if you rename it!
 require_once __DIR__ . '/../../includes/db_connect.php';
-check_admin_login();
-
+check_admin_login($conn);
 // Get admin's name
 $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
 
@@ -28,188 +27,37 @@ if ($active_users_result && $active_users_result->num_rows > 0) {
     $active_users = (int) $active_users_result->fetch_assoc()['active_today'];
 }
 
-// Period-based counts for the chart buttons
-$daily_users = 0;
-$weekly_labels = [];
-$weekly_values = [];
-$monthly_labels = [];
-$monthly_values = [];
-
-/* =========================
-   DAILY USERS
-   ========================= */
-$daily_users_result = $conn->query("
-    SELECT COUNT(user_id) AS total
-    FROM users
-    WHERE DATE(created_at) = CURDATE()
-");
-
-if ($daily_users_result && $daily_users_result->num_rows > 0) {
-    $daily_users = (int)$daily_users_result->fetch_assoc()['total'];
-}
-
-/* =========================
-   WEEKLY USERS (MONDAY-FRIDAY ONLY)
-   ========================= */
-
-$weekly_labels = [];
-$weekly_values = [];
-
-$week_start = date('Y-m-d', strtotime('monday this week'));
-$week_end = date('Y-m-d', strtotime('friday this week'));
-
-$weekly_result = $conn->query("
-    SELECT DATE(created_at) AS day_date,
-           COUNT(user_id) AS total
-    FROM users
-    WHERE created_at >= '$week_start'
-      AND created_at < DATE_ADD('$week_end', INTERVAL 1 DAY)
-    GROUP BY DATE(created_at)
-    ORDER BY day_date ASC
-");
-
-$weekly_counts = [];
-
-if ($weekly_result) {
-    while ($row = $weekly_result->fetch_assoc()) {
-        $weekly_counts[$row['day_date']] = (int)$row['total'];
+// =========================
+// RECENT LOGIN ACTIVITY
+// =========================
+$recent_logins = [];
+$login_activity_error = null;
+try {
+    $login_activity_result = $conn->query("
+        SELECT la.login_time, la.ip_address, u.first_name, u.last_name, u.email
+        FROM login_activity la
+        JOIN users u ON la.user_id = u.user_id
+        WHERE la.status = 'success'
+        ORDER BY la.login_time DESC
+        LIMIT 10
+    ");
+    if ($login_activity_result) {
+        while ($row = $login_activity_result->fetch_assoc()) {
+            $recent_logins[] = $row;
+        }
     }
+} catch (mysqli_sql_exception $e) {
+    $login_activity_error = "Could not fetch login activity. The 'login_activity' table might be missing.";
 }
 
-/*
-    Generates ONLY:
-    Mon
-    Tue
-    Wed
-    Thu
-    Fri
-*/
-
-$weekly_dates = [
-    date('Y-m-d', strtotime('monday this week')),
-    date('Y-m-d', strtotime('tuesday this week')),
-    date('Y-m-d', strtotime('wednesday this week')),
-    date('Y-m-d', strtotime('thursday this week')),
-    date('Y-m-d', strtotime('friday this week'))
-];
-
-foreach ($weekly_dates as $date) {
-    $weekly_labels[] = date('D', strtotime($date));
-    $weekly_values[] = $weekly_counts[$date] ?? 0;
+// =========================
+// FETCH DATA FOR FORMS
+// =========================
+$users = [];
+$users_result = $conn->query("SELECT user_id, first_name, last_name FROM users ORDER BY first_name ASC, last_name ASC");
+if ($users_result) {
+    while ($row = $users_result->fetch_assoc()) $users[] = $row;
 }
-
-/* =========================
-   MONTHLY USERS
-   Based on your screenshot:
-   Jan = 2
-   Feb = 2
-   ========================= */
-
-$monthly_labels = [];
-$monthly_values = [];
-
-// Generate labels for the last 3 months (e.g., Apr, May, Jun)
-for ($i = 2; $i >= 0; $i--) {
-    $monthly_labels[] = date('M', strtotime("-$i month"));
-}
-
-// For this implementation, we will show the same total stats for each of the last 3 months
-// as requested. The values array will just be a placeholder for the dataset structure.
-foreach ($monthly_labels as $label) {
-    // This data isn't used directly in the chart datasets below, but is kept for structure.
-    $monthly_values[] = $active_users; 
-}
-
-/* =========================
-   DEPARTMENTS
-   ========================= */
-
-$department_values = [];
-$department_chart_result = $conn->query("
-    SELECT d.department_name,
-           COUNT(u.user_id) AS total
-    FROM departments d
-    LEFT JOIN users u
-    ON d.department_id = u.department_id
-    GROUP BY d.department_id, d.department_name
-    ORDER BY total DESC
-");
-
-if ($department_chart_result) {
-    while ($row = $department_chart_result->fetch_assoc()) {
-        $department_values[] = (int)$row['total'];
-    }
-}
-
-$department_count = count($department_values)
-    ? array_sum($department_values)
-    : 0;
-
-$chart_data = [
-    'daily' => [
-        'labels' => ['Today'],
-        'datasets' => [
-            [
-                'label' => 'Total Active Users',
-                'values' => [$active_users],
-                'className' => 'present'
-            ],
-            [
-                'label' => 'Departments',
-                'values' => [$department_total],
-                'className' => 'absent'
-            ],
-        ],
-    ],
-
-    'weekly' => [
-    'labels' => $weekly_labels,
-    'datasets' => [
-        [
-            'label' => 'Total Active Users',
-            'values' => array_fill(
-                0,
-                count($weekly_labels),
-                $active_users
-            ),
-            'className' => 'present'
-        ],
-        [
-            'label' => 'Total Departments',
-            'values' => array_fill(
-                0,
-                count($weekly_labels),
-                $department_total
-            ),
-            'className' => 'absent'
-        ]
-    ]
-],
-
-    'monthly' => [
-    'labels' => $monthly_labels,
-    'datasets' => [
-        [
-            'label' => 'Total Active Users',
-            'values' => array_fill(
-                0,
-                count($monthly_labels),
-                $active_users
-            ),
-            'className' => 'present'
-        ],
-        [
-            'label' => 'Total Departments',
-            'values' => array_fill(
-                0,
-                count($monthly_labels),
-                $department_total
-            ),
-            'className' => 'absent'
-        ]
-    ]
-],
-];
 ?>
 
 <!DOCTYPE html>
@@ -222,33 +70,15 @@ $chart_data = [
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="../../assets/css/admin.css">
     <style>
-        /* Chart tooltip and bottom summary styles */
-        .chart-tooltip {
-            position: absolute;
-            background: rgba(0,0,0,0.85);
-            color: #fff;
-            padding: 8px 10px;
-            border-radius: 6px;
-            font-size: 13px;
-            pointer-events: none;
-            z-index: 9999;
-            white-space: nowrap;
-            transform: translate(-50%, -8px);
-        }
-        .chart-bottom-summary {
-            display: flex;
-            gap: 16px;
-            margin-top: 12px;
-            align-items: center;
-        }
-        .summary-item { display:flex; align-items:center; gap:8px; color:#333; }
-        .summary-item .value { font-weight:600; margin-left:6px; color:#1f2937; }
-        /* Keep legend and summary visually consistent */
-        .chart-legend, .chart-bottom-summary { flex-wrap:wrap }
+        /* Fix for Recent Login Activity Table */
+        .activity-table { width: 100%; border-collapse: collapse; }
+        .activity-table th, .activity-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .activity-table th { background-color: #f8fafc; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; }
+        .activity-table .user-name { font-weight: 600; display: block; }
+        .activity-table .user-email { font-size: 0.85rem; color: var(--text-muted); }
     </style>
 </head>
 <body>
-
     <header class="mobile-header">
         <div class="admin-brand">
             <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
@@ -277,7 +107,6 @@ $chart_data = [
                 <ul class="sidebar-links">
                     <li class="active"><a href="../../pages/user-admin/admin_dashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li><a href="../../pages/user-admin/adminusers.php"><i class="ph ph-users"></i> Master Users</a></li>
-                    <li><a href="#"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
             </div>
             
@@ -323,42 +152,73 @@ $chart_data = [
 
             <section class="data-grid" style="grid-template-columns: 1fr;">
                 
-                <div class="chart-card">
+                <div class="card">
                     <div class="card-header">
                         <div>
-                            <h2>System Activity</h2>
-                            <p id="chartPeriodLabel" class="section-desc">Showing Daily activity summary</p>
-                        </div>
-                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                            <div class="chart-filters">
-                                <button class="active" data-period="daily">Daily</button>
-                                <button data-period="weekly">Weekly</button>
-                                <button data-period="monthly">Monthly</button>
-                            </div>
-                            <button class="btn-secondary" style="padding: 0.4rem 1rem;">
-                                <i class="ph ph-download-simple"></i> Export CSV
-                            </button>
+                            <h2>Recent Login Activity</h2>
+                            <p class="section-desc">Showing the last 10 successful logins to the system.</p>
                         </div>
                     </div>
-                    <div class="chart-legend">
-                        <span class="legend-item"><span class="dot present"></span> Total Active Users</span>
-                        <span class="legend-item"><span class="dot absent"></span> Total Departments</span>
-                    </div>
-                    
-                    <div class="mock-chart" id="activityChart"></div>
-                    <div class="chart-bottom-summary" id="chartBottomSummary" aria-hidden="false">
-                        <div class="summary-item">
-                            <span class="dot present"></span>
-                            <span class="summary-label">Total Active Users</span>
-                            <span class="value" id="summaryActive">0</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="dot absent"></span>
-                            <span class="summary-label">Total Departments</span>
-                            <span class="value" id="summaryDepartments">0</span>
-                        </div>
+                    <div class="table-container" style="margin-top: 1rem;">
+                        <table class="activity-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Login Time</th>
+                                    <th>IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if ($login_activity_error): ?>
+                                    <tr><td colspan="3" style="text-align: center; color: #ef4444; padding: 2rem;"><?php echo htmlspecialchars($login_activity_error); ?></td></tr>
+                                <?php elseif (empty($recent_logins)): ?>
+                                    <tr><td colspan="3" style="text-align: center; color: #718096; padding: 2rem;">No recent login activity found.</td></tr>
+                                <?php else: ?>
+                                    <?php foreach ($recent_logins as $login): ?>
+                                    <tr>
+                                        <td>
+                                            <span class="user-name"><?php echo htmlspecialchars($login['first_name'] . ' ' . $login['last_name']); ?></span>
+                                            <span class="user-email"><?php echo htmlspecialchars($login['email']); ?></span>
+                                        </td>
+                                        <td><?php echo htmlspecialchars(date('M d, Y, h:i A', strtotime($login['login_time']))); ?></td>
+                                        <td><?php echo htmlspecialchars($login['ip_address']); ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+
+                <!-- Security Controls Section -->
+                <section class="security-controls-section">
+                    <div class="section-header">
+                        <h2>Security Controls</h2>
+                        <p class="section-desc">Emergency actions for user management and security breach response.</p>
+                    </div>
+
+                    <div class="security-grid">
+                        <div class="security-card">
+                            <div class="security-card-header">
+                                <div class="security-icon deactivate-icon"><i class="ph ph-lock"></i></div>
+                                <div class="security-info">
+                                    <h3>Terminate All Login Sessions</h3>
+                                    <p>Immediately log out all users from the system.</p>
+                                </div>
+                            </div>
+                            <form class="security-form" id="terminateSessionsForm" method="POST" action="terminate_sessions.php">
+                                <div class="form-group">
+                                    <label for="confirmationText">Confirmation <span class="required">*</span></label>
+                                    <input type="text" id="confirmationText" name="confirmation" class="form-control" placeholder="Type TERMINATE to confirm" required>
+                                    <small style="display:block; margin-top:6px; color:#666;">This will force every user, including yourself, to log in again.</small>
+                                </div>
+                                <button type="submit" class="btn-danger" onclick="return confirm('⚠️ WARNING: This will immediately terminate all active login sessions. Proceed?');">
+                                    <i class="ph ph-prohibit"></i> Terminate All Sessions
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </section>
             </section>
         </main>
     </div>
@@ -377,114 +237,6 @@ $chart_data = [
         menuToggle.addEventListener('click', toggleMenu);
         closeSidebar.addEventListener('click', toggleMenu);
         sidebarOverlay.addEventListener('click', toggleMenu);
-
-        const chartData = <?php echo json_encode($chart_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
-        const chartButtons = document.querySelectorAll('.chart-filters button');
-        const chartPeriodLabel = document.getElementById('chartPeriodLabel');
-        const activityChart = document.getElementById('activityChart');
-        const summaryActive = document.getElementById('summaryActive');
-        const summaryDepartments = document.getElementById('summaryDepartments');
-
-        // Tooltip element (single reusable)
-        const tooltip = document.createElement('div');
-        tooltip.className = 'chart-tooltip';
-        tooltip.style.display = 'none';
-        document.body.appendChild(tooltip);
-
-        function updateChart(period) {
-            updateBarChart(period);
-            chartButtons.forEach(button => button.classList.toggle('active', button.dataset.period === period));
-            const periodText = period === 'weekly' ? '5-day workweek view' : period === 'monthly' ? 'last 3 months view' : 'today view';
-            chartPeriodLabel.textContent = 'Showing ' + period.charAt(0).toUpperCase() + period.slice(1) + ' (' + periodText + ')';
-        }
-
-        function updateBarChart(period) {
-            const data = chartData[period] || chartData.daily;
-            const allValues = [];
-            data.datasets.forEach(dataset => {
-                dataset.values.forEach(value => allValues.push(value));
-            });
-            const maxValue = Math.max(1, ...allValues);
-
-            activityChart.innerHTML = '';
-            activityChart.className = 'mock-chart'; // Reset to vertical
-            document.getElementById('chartBottomSummary').style.display = 'flex';
-
-            data.labels.forEach((label, labelIndex) => {
-                const group = document.createElement('div');
-                group.className = 'chart-group';
-
-                const bars = document.createElement('div');
-                bars.className = 'chart-bars';
-
-                data.datasets.forEach((dataset, datasetIndex) => {
-                    const bar = document.createElement('div');
-                    bar.className = 'bar ' + dataset.className;
-                    const value = dataset.values[labelIndex] || 0;
-                    bar.style.height = Math.max(8, (value / maxValue) * 100) + '%';
-                    bar.title = dataset.label + ': ' + value;
-                    bars.appendChild(bar);
-                });
-
-                const labelEl = document.createElement('span');
-                labelEl.className = 'label';
-                labelEl.textContent = label;
-
-                group.appendChild(bars);
-                group.appendChild(labelEl);
-                activityChart.appendChild(group);
-
-                // hover handlers to show tooltip and update bottom summary
-                group.addEventListener('mouseenter', (ev) => {
-                    // build tooltip content
-                    let html = '<strong>' + label + '</strong><br>';
-                    data.datasets.forEach(dataset => {
-                        const value = dataset.values[labelIndex] || 0;
-                        html += '<span style="display:inline-block;width:8px;height:8px;background:' + getComputedStyle(document.querySelector('.' + dataset.className)).backgroundColor + ';margin-right:8px;border-radius:2px;vertical-align:middle;"></span>' + dataset.label + ': ' + value + '<br>';
-                    });
-                    tooltip.innerHTML = html;
-                    tooltip.style.display = 'block';
-                    positionTooltip(ev);
-
-                    // update bottom summary values to the hovered group's values
-                    const a = data.datasets[0].values[labelIndex] || 0;
-                    const d = data.datasets[1].values[labelIndex] || 0;
-                    summaryActive.textContent = a;
-                    summaryDepartments.textContent = d;
-                });
-
-                group.addEventListener('mousemove', (ev) => positionTooltip(ev));
-                group.addEventListener('mouseleave', () => {
-                    tooltip.style.display = 'none';
-                    // reset summary to last label (default)
-                    const lastIndex = data.labels.length - 1;
-                    summaryActive.textContent = data.datasets[0].values[lastIndex] || 0;
-                    summaryDepartments.textContent = data.datasets[1].values[lastIndex] || 0;
-                });
-            });
-
-            // set default bottom summary to the last label values
-            const lastIndex = data.labels.length - 1;
-            summaryActive.textContent = data.datasets[0].values[lastIndex] || 0;
-            summaryDepartments.textContent = data.datasets[1].values[lastIndex] || 0;
-        }
-
-        function positionTooltip(ev) {
-            const padding = 10;
-            const rect = ev.target.getBoundingClientRect();
-            const x = rect.left + rect.width / 2;
-            const y = rect.top - padding;
-            tooltip.style.left = x + 'px';
-            tooltip.style.top = y + 'px';
-        }
-
-        chartButtons.forEach(button => {
-            button.addEventListener('click', function () {
-                updateChart(this.dataset.period);
-            });
-        });
-
-        updateChart('daily');
     </script>
 </body>
 </html>

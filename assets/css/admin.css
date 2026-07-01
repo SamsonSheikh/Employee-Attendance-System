@@ -1068,3 +1068,14 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* --- Recent Login Activity Table --- */
+.activity-table { width: 100%; border-collapse: collapse; }
+.activity-table th, .activity-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border-color); }
+.activity-table th { background-color: #f8fafc; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; }
+.activity-table td { font-size: 0.9rem; color: var(--text-main); }
+.activity-table .user-name { font-weight: 600; display: block; }
+.activity-table .user-email { font-size: 0.85rem; color: var(--text-muted); }
+html.dark-mode .activity-table th { background-color: #374151; }
+html.dark-mode .activity-table td { border-bottom-color: #374151; }
+html.dark-mode .activity-table tbody tr:hover { background-color: #111827; }

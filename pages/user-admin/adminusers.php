@@ -1,18 +1,34 @@
 <?php
 // Include the authentication function from the same directory
 require_once __DIR__ . '/functions.php';
-check_admin_login();
+
 
 require_once __DIR__ . '/../../includes/db_connect.php';
 
 // Get admin's name
 $admin_name = isset($_SESSION["username"]) ? $_SESSION["username"] : "Admin";
 
-$flash = [
-    'type' => null,
-    'message' => null,
-];
+// Flash message handling
+$flash = [];
+if (isset($_SESSION['flash'])) {
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+}
 
+check_admin_login($conn);
+
+function set_flash($type, $message, $errors = []) {
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message, 'errors' => $errors];
+}
+
+// --- PHPMailer Integration ---
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+if (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+    require_once __DIR__ . '/../../vendor/autoload.php';
+}
+ 
 /**
  * Sends a welcome email to a new user with their account details and a unique QR code.
  * The QR code is generated using an external API.
@@ -23,20 +39,49 @@ $flash = [
  * @return bool Returns true if the mail is successfully accepted for delivery, false otherwise.
  */
 function send_qr_email($email, $firstName, $qrIdentifier) {
-    $subject = "Welcome to FlowTime - Your Account is Ready!";
-    $qrCodeUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($qrIdentifier);
+    // Check if PHPMailer is available
+    if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+        // Fallback or error if PHPMailer is not installed
+        error_log("PHPMailer not found. Cannot send email.");
+        return false;
+    }
 
-    $message = "
-        <html><body style='font-family: sans-serif; color: #333;'>
-            <h2>Welcome, " . htmlspecialchars($firstName) . "!</h2>
-            <p>Your account for the FlowTime system has been created successfully.</p>
-            <p>Please use the QR code below for attendance purposes. You can scan this directly from your phone.</p>
-            <img src='" . $qrCodeUrl . "' alt='Your Personal QR Code' style='display: block; margin: 20px 0;'/>
-            <p>If you have any questions, please contact the administration.</p>
-        </body></html>";
+    $db_config = require __DIR__ . '/../../includes/config.php';
+    $mail_config = $db_config['mail'] ?? null;
 
-    $headers = "MIME-Version: 1.0" . "\r\n" . "Content-type:text/html;charset=UTF-8" . "\r\n" . "From: no-reply@flowtime.com" . "\r\n";
-    return mail($email, $subject, $message, $headers);
+    if (!$mail_config) {
+        error_log("Mail configuration is missing.");
+        return false;
+    }
+
+    $mail = new PHPMailer(true);
+
+    try {
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host       = $mail_config['host'];
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $mail_config['username'];
+        $mail->Password   = $mail_config['password'];
+        $mail->SMTPSecure = $mail_config['encryption'];
+        $mail->Port       = $mail_config['port'];
+
+        // Recipients
+        $mail->setFrom($mail_config['from_address'], $mail_config['from_name']);
+        $mail->addAddress($email, $firstName);
+
+        // Content
+        $mail->isHTML(true);
+        $mail->Subject = "Welcome to FlowTime - Your Account is Ready!";
+        $qrCodeUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($qrIdentifier);
+        $mail->Body    = "<html><body style='font-family: sans-serif; color: #333;'><h2>Welcome, " . htmlspecialchars($firstName) . "!</h2><p>Your account for the FlowTime system has been created successfully.</p><p>Please use the QR code below for attendance purposes. You can scan this directly from your phone.</p><img src='" . $qrCodeUrl . "' alt='Your Personal QR Code' style='display: block; margin: 20px 0;'/><p>If you have any questions, please contact the administration.</p></body></html>";
+        $mail->AltBody = 'Welcome, ' . htmlspecialchars($firstName) . '! Your account has been created. Your QR code is available at: ' . $qrCodeUrl;
+
+        return $mail->send();
+    } catch (Exception $e) {
+        error_log("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
+        return false;
+    }
 }
 
 function h($v) {
@@ -116,6 +161,9 @@ if ($action === 'add_user' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt->execute();
         $stmt->close();
+
+        // Send the welcome email with the QR code
+        send_qr_email($email, $first_name, $qr_identifier);
 
         // Redirect to show the QR code modal on the same page
         $new_user_name = $first_name . ' ' . $last_name;
@@ -272,29 +320,31 @@ if ($action === 'add_user' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             $stmt->close();
 
+            // Send the welcome email with the QR code
+            send_qr_email($email, $first_name, $qr_identifier);
+
             $added++;
         }
 
         if (!empty($errors) && $added === 0) {
             $conn->rollback();
-            $flash['type'] = 'error';
-            $flash['message'] = 'Bulk add failed: ' . htmlspecialchars($errors[0], ENT_QUOTES, 'UTF-8');
+            set_flash('error', 'Bulk add failed. No users were added. First error: ' . htmlspecialchars($errors[0], ENT_QUOTES, 'UTF-8'), $errors);
         } else {
             $conn->commit();
-            $flash['type'] = empty($errors) ? 'success' : 'error';
-            $flash['message'] = 'Bulk add complete. Added: ' . $added . '. Failed: ' . count($errors) . '.';
-            if (!empty($errors)) {
-                $flash['errors'] = array_slice($errors, 0, 5);
-            }
+            $type = empty($errors) ? 'success' : 'warning';
+            $message = 'Bulk add complete. Added: ' . $added . '. Failed: ' . count($errors) . '.';
+            $error_list = !empty($errors) ? array_slice($errors, 0, 10) : [];
+            set_flash($type, $message, $error_list);
         }
 
-        header('Location: adminusers.php?flash=bulk');
+        header('Location: adminusers.php');
         exit;
 
     } catch (Throwable $e) {
         try { $conn->rollback(); } catch (Throwable $ignored) {}
-        $flash['type'] = 'error';
-        $flash['message'] = $e->getMessage();
+        set_flash('error', $e->getMessage());
+        header('Location: adminusers.php');
+        exit;
     }
 }
 
@@ -467,27 +517,20 @@ if ($action === 'update_user_role' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Reason is required.');
         }
 
-        $stmt = $conn->prepare('SELECT role_id FROM roles WHERE role_id = ? LIMIT 1');
-        $stmt->bind_param('i', $new_role_id);
+        // Fetch user details and role names for the report
+        $stmt = $conn->prepare('
+            SELECT u.first_name, u.last_name, u.email, r_old.role_name AS old_role_name, r_new.role_name AS new_role_name
+            FROM users u
+            LEFT JOIN roles r_old ON u.role_id = r_old.role_id
+            CROSS JOIN (SELECT role_name FROM roles WHERE role_id = ?) AS r_new
+            WHERE u.user_id = ?
+        ');
+        $stmt->bind_param('ii', $new_role_id, $user_id);
         $stmt->execute();
-        $stmt->store_result();
-        if ($stmt->num_rows === 0) {
-            $stmt->close();
-            throw new Exception('Selected role is invalid.');
-        }
+        $result = $stmt->get_result();
+        $report_data = $result->fetch_assoc();
         $stmt->close();
-
-        // Capture current role for audit
-        $oldRoleId = null;
-        $stmt = $conn->prepare('SELECT role_id FROM users WHERE user_id = ? LIMIT 1');
-        $stmt->bind_param('i', $user_id);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        if ($res && $row = $res->fetch_assoc()) {
-            $oldRoleId = (int)$row['role_id'];
-        }
-        $stmt->close();
-        if ($oldRoleId === null) {
+        if (!$report_data) {
             throw new Exception('User not found.');
         }
 
@@ -496,58 +539,26 @@ if ($action === 'update_user_role' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
         $stmt->close();
 
-        // Best-effort audit log (optional table)
+        // --- Generate and download the report file ---
         $adminUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'Admin';
-        try {
-            // common names: audit_log / role_audit / security_audit
-            $tablesToTry = ['audit_log', 'role_audit', 'security_audit'];
-            $insertDone = false;
+        $report_content = "USER ROLE ASSIGNMENT REPORT\r\n";
+        $report_content .= "===================================\r\n";
+        $report_content .= "Date: " . date('Y-m-d H:i:s') . "\r\n";
+        $report_content .= "Action performed by: " . $adminUser . "\r\n";
+        $report_content .= "-----------------------------------\r\n";
+        $report_content .= "User ID: " . $user_id . "\r\n";
+        $report_content .= "User Name: " . $report_data['first_name'] . ' ' . $report_data['last_name'] . "\r\n";
+        $report_content .= "User Email: " . $report_data['email'] . "\r\n";
+        $report_content .= "-----------------------------------\r\n";
+        $report_content .= "Previous Role: " . ($report_data['old_role_name'] ?? 'N/A') . "\r\n";
+        $report_content .= "New Role Assigned: " . $report_data['new_role_name'] . "\r\n";
+        $report_content .= "-----------------------------------\r\n";
+        $report_content .= "Reason for Change:\r\n" . $reason . "\r\n";
 
-            foreach ($tablesToTry as $tbl) {
-                // Check existence
-                $check = $conn->prepare("SHOW TABLES LIKE ?");
-                $check->bind_param('s', $tbl);
-                $check->execute();
-                $check->store_result();
-                if ($check->num_rows > 0) {
-                    $check->close();
-
-                    // Try flexible insert with common columns
-                    $stmtIns = null;
-                    // Try 4 columns first
-                    $stmtIns = $conn->prepare("INSERT INTO {$tbl} (admin_username, user_id, action, reason, created_at) VALUES (?, ?, ?, ?, NOW())");
-                    if ($stmtIns) {
-                        $actionText = 'Role changed';
-                        $stmtIns->bind_param('siss', $adminUser, $user_id, $actionText, $reason);
-                        if ($stmtIns->execute()) {
-                            $insertDone = true;
-                        }
-                        $stmtIns->close();
-                    }
-
-                    if (!$insertDone) {
-                        // Fallback: different column set
-                        $stmtIns = $conn->prepare("INSERT INTO {$tbl} (admin_username, user_id, new_role_id, reason, created_at) VALUES (?, ?, ?, ?, NOW())");
-                        if ($stmtIns) {
-                            $stmtIns->bind_param('sii s', $adminUser, $user_id, $new_role_id, $reason);
-                            $stmtIns->execute();
-                            $stmtIns->close();
-                            $insertDone = true;
-                        }
-                    }
-
-                    if ($insertDone) {
-                        break;
-                    }
-                } else {
-                    $check->close();
-                }
-            }
-        } catch (Throwable $ignored) {
-            // ignore audit failures
-        }
-
-        header('Location: adminusers.php?flash=role_changed');
+        header('Content-Type: text/plain');
+        header('Content-Disposition: attachment; filename="role_assignment_report_' . $user_id . '_' . date('Ymd') . '.txt"');
+        header('Content-Length: ' . strlen($report_content));
+        echo $report_content;
         exit;
     } catch (Throwable $e) {
         $flash['type'] = 'error';
@@ -558,7 +569,7 @@ if ($action === 'update_user_role' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // --- Load user list ---
 $users = [];
 $sql = 'SELECT u.user_id, u.first_name, u.last_name, u.email,
-               r.role_name,
+               r.role_name, u.qr_identifier,
                u.department_id,
                d.department_name,
                u.created_at
@@ -585,7 +596,6 @@ while ($row = $stmt->fetch_assoc()) {
     <link rel="stylesheet" href="../../assets/css/admin.css">
 </head>
 <body>
-
     <header class="mobile-header">
         <div class="admin-brand">
             <span class="brand-icon"><i class="ph-fill ph-clock-user"></i></span>
@@ -613,7 +623,6 @@ while ($row = $stmt->fetch_assoc()) {
                 <ul class="sidebar-links">
                     <li><a href="../../pages/user-admin/admin_dashboard.php"><i class="ph ph-squares-four"></i> Dashboard</a></li>
                     <li class="active"><a href="../../pages/user-admin/adminusers.php"><i class="ph ph-users"></i> Master Users</a></li>
-                    <li><a href="#"><i class="ph ph-gear"></i> Settings</a></li>
                 </ul>
             </div>
 
@@ -644,7 +653,12 @@ while ($row = $stmt->fetch_assoc()) {
 
                 <?php if (!empty($flash['type']) && !empty($flash['message'])): ?>
                     <div style="margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: <?php echo $flash['type'] === 'success' ? '#dcfce7' : '#fee2e2'; ?>; color: #111; border: 1px solid <?php echo $flash['type'] === 'success' ? '#86efac' : '#fca5a5'; ?>">
-                        <?php echo h($flash['message']); ?>
+                        <p><?php echo h($flash['message']); ?></p>
+                        <?php if (!empty($flash['errors'])): ?>
+                            <ul style="margin-top: 8px; padding-left: 20px; font-size: 0.85rem;">
+                                <?php foreach ($flash['errors'] as $error): echo '<li>' . h($error) . '</li>'; endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -696,6 +710,9 @@ while ($row = $stmt->fetch_assoc()) {
                                                 <input type="hidden" name="confirm_password" value="" />
                                                 <button class="btn-icon edit-btn" title="Change Password (Use modal below)" type="button" onclick="openChangePasswordModal(<?php echo (int)$u['user_id']; ?>)" aria-label="Change password">
                                                     <i class="ph ph-pencil"></i>
+                                                </button>
+                                                <button class="btn-icon" title="View QR Code" type="button" onclick="openQrCodeModal('<?php echo h($u['first_name'] . ' ' . $u['last_name']); ?>', '<?php echo h($u['qr_identifier']); ?>')">
+                                                    <i class="ph ph-qr-code"></i>
                                                 </button>
                                             </form>
                                             <form method="POST" action="adminusers.php?action=delete_user" style="display:inline;" onsubmit="return confirm('Delete user #<?php echo h($u['user_id']); ?>? This cannot be undone.');">
@@ -978,6 +995,16 @@ while ($row = $stmt->fetch_assoc()) {
             cpUserId.value = userId;
             modal.style.display = 'block';
         }
+        
+        function openQrCodeModal(userName, qrIdentifier) {
+            const modal = document.getElementById('qrCodeDisplayModal');
+            if (!modal || !qrIdentifier) return;
+            
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrIdentifier)}`;
+            document.getElementById('qrUserName').textContent = userName;
+            document.getElementById('qrCodeImage').src = qrUrl;
+            modal.style.display = 'block';
+        }
 
         // Modal close on outside click
         function wireOutsideClose(modalId) {
@@ -1001,11 +1028,7 @@ while ($row = $stmt->fetch_assoc()) {
             if (urlParams.get('flash') === 'user_added' && urlParams.has('qr')) {
                 const userName = urlParams.get('name');
                 const qrIdentifier = urlParams.get('qr');
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrIdentifier)}`;
-
-                document.getElementById('qrUserName').textContent = userName;
-                document.getElementById('qrCodeImage').src = qrUrl;
-                document.getElementById('qrCodeDisplayModal').style.display = 'block';
+                openQrCodeModal(userName, qrIdentifier);
 
                 history.replaceState(null, '', window.location.pathname);
             }
